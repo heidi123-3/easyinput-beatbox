@@ -1,6 +1,6 @@
 # EasyInput Beatbox
 
-基于 [EasyInput V2.0](../easyinput-board-cy) 的节拍器 / 鼓机工程：板端实时发声与运输，电脑端可视化，USB 双向联动。
+基于 EasyInput V2.0 的节拍器 / 鼓机工程：板端实时发声与运输，电脑端可视化与 Pattern 编辑，USB 双向联动。
 
 - **板级事实**：`easyinput-board-cy`
 - **产品约定**：`.cursor/skills/easyinput-drum-machine`
@@ -10,11 +10,13 @@
 
 ## 当前能力
 
-- clave / 木块风格短瞬态 click（低音量、去刺耳高频）
-- 旋钮 BPM，编码器按键 / S8 Play-Stop
-- 5 灯来回走拍点
-- USB Serial 主机链路：状态 / 拍点 / 启停 / BPM
-- 电脑端自动重连，显示 BPM / 播放状态 / 拍点 / 钟摆，并预留鼓机区域
+- clave / 木块风格短瞬态 click + public-domain TR-707 PCM 鼓组
+- 显式「仅节拍器 / 鼓机」双模式，上电默认仅节拍器
+- 内部 **96 PPQN** 采样时钟调度；对外 MIDI Clock 语义为 24 PPQN
+- 旋钮 BPM，编码器 / S8 Play-Stop；S1–S5 Live Pad；S6 Fill；S7 A/B
+- 16 步 × 6 轨 Pattern（A/B/Fill）、Swing 50–75%、总音量、revision 同步
+- USB Serial 主机协议 v2：状态 / 位置 / Pattern / 启停 / BPM
+- 电脑端自动重连、节拍器面板 + 16 步编辑器；MIDI 适配层可单测
 
 ## 目录
 
@@ -26,7 +28,8 @@ easyinput-beatbox/
 ├── docs/
 │   ├── product-contract.md
 │   ├── host-protocol.md
-│   └── midi-protocol.md
+│   ├── midi-protocol.md
+│   └── usb-midi-spike.md
 └── scripts/
 ```
 
@@ -49,25 +52,30 @@ idf.py -p /dev/cu.usbmodem* flash
 ```bash
 pnpm install
 pnpm dev
+pnpm test
 ```
 
-用 **Chrome / Edge** 打开本地地址。首次点击「连接」授权 Espressif 串口；之后插拔可自动重连。
+用 **Chrome / Edge** 打开本地地址。首次点击「连接」授权 Espressif 串口；之后插拔可自动重连。连接后需收到 `hello` + `state` 才进入 synced。
 
 ## 硬件交互
 
 | 操作 | 行为 |
 | --- | --- |
 | 旋转编码器 | BPM 60–240 |
-| 短按编码器或 S8 | Play / Stop |
+| 短按编码器或 S8 | Play / Stop（Start 归零） |
+| S1–S5 | Kick / Snare / CHH / OHH / Clap |
+| S6 | Fill（按住） |
+| S7 | A/B Variation |
 | RGB | 5 灯 ping-pong 走拍；重拍偏暖色 |
 
 ## 为什么是「MIDI 语义 + Serial 承载」
 
-- MIDI 的 Start/Stop/Clock 与 GM 通道 10 适合节拍器 → 鼓机扩展
+- MIDI 的 Start/Stop/Continue/Clock/SPP 与 GM 通道 10 适合节拍器 → 鼓机扩展
 - ESP32-S3 上 USB MIDI class 与烧录用的 USB-Serial/JTAG 抢同一 PHY，macOS 上不稳定
-- 因此 P1 用 Web Serial 承载同等语义，保证配套 UI 能用；class-compliant MIDI 作为后续选项
+- 因此当前用 Web Serial 承载领域事件；`app/src/midi-adapter.ts` 提供标准 MIDI 字节映射
+- USB MIDI class 可行性见 `docs/usb-midi-spike.md`；未过门槛前不替换 Serial
 
-板端继续负责实时发声；电脑端负责可视化与控制。
+板端继续负责实时发声；电脑端负责可视化、编辑与同步。
 
 ## Skill
 

@@ -6,6 +6,8 @@ idf_component_register(
         "ui/led_status.c"
         "audio/audio_click.c"
         "seq/tempo.c"
+        "seq/pattern.c"
+        "seq/sequencer.c"
         "host/host_link.c"
     INCLUDE_DIRS
         "."
@@ -19,4 +21,11 @@ idf_component_register(
         esp_driver_gpio
         esp_driver_i2s
         esp_timer
+    EMBED_FILES
+        "audio/samples/kick.raw"
+        "audio/samples/snare.raw"
+        "audio/samples/hihat_closed.raw"
+        "audio/samples/hihat_open.raw"
+        "audio/samples/clap.raw"
+        "audio/samples/rim.raw"
 )

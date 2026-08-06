@@ -10,6 +10,7 @@
 - 主体约 2.0–2.5 kHz clave 感，而不是长鸣正弦或刺耳方波
 - 削去过高频能量，降低长时间听感疲劳
 - 重拍与普通拍以音高/音色区分，音量差保持克制
+- 鼓机默认音色：public-domain TR-707 Kick/Snare/CHH/OHH/Clap，离线转换为 32 kHz/16-bit/mono PCM 并嵌入固件
 
 板端合成实现见 `firmware/main/audio/audio_click.c`。
 
@@ -17,31 +18,55 @@
 
 - I2S `32000 Hz` 采样时钟是唯一节拍时间源；UI、USB 与灯光不得驱动声音触发
 - 连续渲染 `128 frame`（4 ms）音频块，不在每拍临时启动/停止 DMA
-- Q32 定点相位累计决定拍点在音频块内的精确采样位置，避免整数 BPM 截断漂移
-- 外部音符进入队列；8 个预分配 voice 独立播放并在 `int32` 累加器中混音
+- 内部调度分辨率 **96 PPQN**（由采样游标 Q32 相位累计派生）
+- 对外 MIDI Clock 为 **24 PPQN**（每 4 个内部 tick 导出一发）
+- 16 步网格：每步 = 24 tick；Swing 仅延迟奇数 16 分音符
+- 外部音符进入队列；预分配 voice 独立播放并在 `int32` 累加器中混音
 - 音频线程不分配内存、不等待 UI/USB 锁，也不执行灯带更新
-- `scripts/check_timing_model.py` 必须覆盖 60–240 BPM、每档 30 分钟；允许误差不超过 1 sample
+- `scripts/check_timing_model.py` 必须覆盖 60–240 BPM 与 Swing；允许误差不超过 1 sample
 
 ## 交互目标
 
-参考机械节拍器与常见桌面节拍器：
+### 节拍器
 
 - 板端可独立使用：旋钮 BPM + 编码器/S8 启停
-- 视觉可预期下一拍（灯来回走；电脑端钟摆 + 拍点灯）
+- 上电默认为「仅节拍器」模式：不运行鼓序列，只播放 click
+- click 开关关闭后节拍器模式静音；鼓机模式下该开关只控制是否叠加 click
+- 视觉可预期下一拍（灯来回走；电脑端拍点条）
 - 电脑端连接后自动识别设备，显示 BPM、运行态、拍号
 - 键盘：空格启停，方向键微调 BPM
-- 为鼓机预留 Pad / 序列界面，不把节拍器做成死胡同产品
+
+### 鼓机（P2）
+
+| 丝印 | 功能 |
+| --- | --- |
+| S1 | Kick（GM 36） |
+| S2 | Snare（GM 38） |
+| S3 | Closed HH（GM 42） |
+| S4 | Open HH（GM 46） |
+| S5 | Clap（GM 39） |
+| — | Rimshot（GM 37，UI / Pattern 第 6 轨） |
+| S6 | Fill（按住临时覆盖） |
+| S7 | Variation A/B |
+| S8 / 编码器按压 | Play / Stop |
+
+- 默认 4/4、16 步、6 轨（Kick / Snare / CHH / OHH / Clap / Rim）
+- Swing 50–75%（主机滑块；编码器按住旋转后续可接）
+- Pattern revision 双向同步；冲突时设备权威
+- 主机右栏为 16 步编辑器 + Live Pad，不是 8 个鼓音色假 Pad
 
 ## 连接
 
 - **当前主通道**：USB Serial + Web Serial（`host-protocol.md`）
 - **语义合同**：MIDI 运输 / GM Ch.10（`midi-protocol.md`）
+- **适配层**：领域事件 ↔ MIDI 字节（`app/src/midi-adapter.ts`）
 - 选择原因：ESP32-S3 共享 PHY，macOS 上 TinyUSB MIDI 易被 JTAG/Serial 抢枚举；Serial 可稳定烧录+联动
+- USB MIDI class 可行性见 `usb-midi-spike.md`；未过门槛前不替换 Serial
 
 ## 阶段
 
 | 阶段 | 状态目标 |
 | --- | --- |
 | P1 | 独立节拍器 + 主机链路 + 配套 UI |
-| P2 | 八键鼓机 / 16 步，复用通道 10 语义 |
-| P3 | UI 编辑 Pattern / Kit；可选 USB MIDI class |
+| P2 | 八键鼓机 / 16 步 / Swing / A/B / Fill，复用通道 10 语义 |
+| P3 | UI 深度编辑 / Kit；可选 USB MIDI class 或桌面桥接 |

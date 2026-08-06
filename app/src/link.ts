@@ -1,39 +1,27 @@
-export type BeatboxState = {
-  connected: boolean;
-  deviceName: string;
-  link: "none" | "serial" | "midi";
-  bpm: number;
-  running: boolean;
-  beatInBar: number; // 0-3
-  accent: boolean;
-  updatedAt: number;
-};
+import {
+  applyLocalBpmDraft,
+  applyLocalPattern,
+  applyLocalVolumeDraft,
+  clearBpmDraft,
+  clearVolumeDraft,
+  createInitialState,
+  markConnecting,
+  markDisconnected,
+  reduceHostLine,
+  type DeviceState,
+} from "./device-store";
+import { bankHex, type PatternBanks } from "./pattern";
+import { clampBpm, clampSwing, clampVolume } from "./protocol";
 
-type Listener = (state: BeatboxState) => void;
+export type { DeviceState as BeatboxState };
+
+type Listener = (state: DeviceState) => void;
 
 const ESPRESSIF_VID = 0x303a;
-const MATCH = /beatbox|easyinput/i;
-
-type HostMsg =
-  | { t: "hello"; v?: number; name?: string }
-  | { t: "state"; bpm: number; run: number; beat: number }
-  | { t: "beat"; accent: number; beat: number }
-  | { t: "start" }
-  | { t: "stop" };
 
 export class BeatboxLink {
   private listeners = new Set<Listener>();
-  private state: BeatboxState = {
-    connected: false,
-    deviceName: "未连接",
-    link: "none",
-    bpm: 120,
-    running: false,
-    beatInBar: 0,
-    accent: false,
-    updatedAt: Date.now(),
-  };
-
+  private state: DeviceState = createInitialState();
   private port: SerialPort | null = null;
   private reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
   private writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
@@ -44,6 +32,9 @@ export class BeatboxLink {
   private reconnectTimer: number | null = null;
   private userDisconnected = false;
   private closing = false;
+  private staleTimer: number | null = null;
+  private commitTimer: number | null = null;
+  private pendingCommitBank: 0 | 1 | 2 | null = null;
 
   getState() {
     return this.state;
@@ -55,20 +46,13 @@ export class BeatboxLink {
     return () => this.listeners.delete(fn);
   }
 
-  private emit() {
-    this.state = { ...this.state, updatedAt: Date.now() };
+  private setState(next: DeviceState) {
+    this.state = next;
     for (const fn of this.listeners) fn(this.state);
   }
 
-  private setDisconnected(label = "等待 EasyInput Beatbox…") {
-    this.state = {
-      ...this.state,
-      connected: false,
-      deviceName: label,
-      link: "none",
-      running: false,
-    };
-    this.emit();
+  private patch(reducer: (s: DeviceState) => DeviceState) {
+    this.setState(reducer(this.state));
   }
 
   async connect() {
@@ -93,7 +77,7 @@ export class BeatboxLink {
   async disconnect() {
     this.userDisconnected = true;
     await this.closePort();
-    this.setDisconnected("未连接");
+    this.patch((s) => markDisconnected(s, "未连接"));
   }
 
   private scheduleAutoReconnect() {
@@ -119,7 +103,7 @@ export class BeatboxLink {
       }
     }
     if (!this.state.connected) {
-      this.setDisconnected("等待设备…点击「连接」授权串口");
+      this.patch((s) => markDisconnected(s, "等待设备…点击「连接」授权串口"));
     }
   }
 
@@ -135,16 +119,20 @@ export class BeatboxLink {
     this.readLoopActive = true;
     this.rxText = "";
 
-    this.state = {
-      ...this.state,
-      connected: true,
-      deviceName: "EasyInput Beatbox",
-      link: "serial",
-    };
-    this.emit();
-
+    this.patch((s) => markConnecting(s));
     void this.writeLine('{"t":"ping"}');
     void this.readLoop();
+    this.armStaleWatch();
+  }
+
+  private armStaleWatch() {
+    if (this.staleTimer != null) window.clearInterval(this.staleTimer);
+    this.staleTimer = window.setInterval(() => {
+      if (!this.state.connected) return;
+      if (Date.now() - this.state.updatedAt > 4000 && this.state.sync === "synced") {
+        this.patch((s) => ({ ...s, sync: "stale", updatedAt: Date.now() }));
+      }
+    }, 1000);
   }
 
   private async closePort() {
@@ -200,54 +188,15 @@ export class BeatboxLink {
       /* disconnect */
     } finally {
       this.readLoopActive = false;
-      this.setDisconnected(this.userDisconnected ? "未连接" : "已断开，正在重连…");
+      this.patch((s) =>
+        markDisconnected(s, this.userDisconnected ? "未连接" : "已断开，正在重连…"),
+      );
       void this.closePort();
     }
   }
 
   private onLine(line: string) {
-    if (!line.startsWith("{")) return;
-    let msg: HostMsg;
-    try {
-      msg = JSON.parse(line) as HostMsg;
-    } catch {
-      return;
-    }
-
-    switch (msg.t) {
-      case "hello":
-        this.state = {
-          ...this.state,
-          connected: true,
-          link: "serial",
-          deviceName: msg.name && MATCH.test(msg.name) ? msg.name : "EasyInput Beatbox",
-        };
-        this.emit();
-        break;
-      case "state":
-        this.state.bpm = Math.max(40, Math.min(300, Math.round(msg.bpm)));
-        this.state.running = !!msg.run;
-        this.state.beatInBar = msg.beat & 0x03;
-        this.state.accent = this.state.beatInBar === 0;
-        this.emit();
-        break;
-      case "beat":
-        this.state.beatInBar = msg.beat & 0x03;
-        this.state.accent = !!msg.accent;
-        this.state.running = true;
-        this.emit();
-        break;
-      case "start":
-        this.state.running = true;
-        this.emit();
-        break;
-      case "stop":
-        this.state.running = false;
-        this.emit();
-        break;
-      default:
-        break;
-    }
+    this.patch((s) => reduceHostLine(s, line));
   }
 
   private async writeLine(line: string) {
@@ -255,7 +204,7 @@ export class BeatboxLink {
     try {
       await this.writer.write(this.encoder.encode(line + "\n"));
     } catch {
-      this.setDisconnected("写入失败，正在重连…");
+      this.patch((s) => markDisconnected(s, "写入失败，正在重连…"));
       void this.closePort();
     }
   }
@@ -264,14 +213,96 @@ export class BeatboxLink {
     void this.writeLine('{"t":"start"}');
   }
 
+  sendContinue() {
+    void this.writeLine('{"t":"continue"}');
+  }
+
   sendStop() {
     void this.writeLine('{"t":"stop"}');
   }
 
   sendBpm(bpm: number) {
-    const v = Math.max(60, Math.min(240, Math.round(bpm)));
-    this.state.bpm = v;
-    this.emit();
+    const v = clampBpm(bpm);
+    this.patch((s) => applyLocalBpmDraft(s, v));
     void this.writeLine(`{"t":"bpm","v":${v}}`);
+    window.setTimeout(() => this.patch((s) => clearBpmDraft(s)), 400);
+  }
+
+  sendSwing(swing: number) {
+    const v = clampSwing(swing);
+    this.patch((s) => ({ ...s, swing: v, updatedAt: Date.now() }));
+    void this.writeLine(`{"t":"swing","v":${v}}`);
+  }
+
+  sendVariation(varIndex: number) {
+    const v = varIndex ? 1 : 0;
+    this.patch((s) => ({ ...s, variation: v, updatedAt: Date.now() }));
+    void this.writeLine(`{"t":"variation","v":${v}}`);
+  }
+
+  sendFill(held: boolean) {
+    this.patch((s) => ({ ...s, fill: held, updatedAt: Date.now() }));
+    void this.writeLine(`{"t":"fill","v":${held ? 1 : 0}}`);
+  }
+
+  sendNote(note: number, velocity = 127) {
+    const n = note & 0x7f;
+    const v = Math.max(1, velocity & 0x7f);
+    if (!this.state.drumMode) {
+      this.sendMode(true);
+    }
+    this.patch((s) => ({ ...s, lastPadNote: n, drumMode: true, updatedAt: Date.now() }));
+    void this.writeLine(`{"t":"note","n":${n},"v":${v}}`);
+  }
+
+  sendClick(enabled: boolean) {
+    this.patch((s) => ({ ...s, click: enabled, updatedAt: Date.now() }));
+    void this.writeLine(`{"t":"click","v":${enabled ? 1 : 0}}`);
+  }
+
+  sendMode(drumMode: boolean) {
+    this.patch((s) => ({
+      ...s,
+      drumMode,
+      click: drumMode ? s.click : true,
+      updatedAt: Date.now(),
+    }));
+    void this.writeLine(`{"t":"mode","v":${drumMode ? 1 : 0}}`);
+  }
+
+  sendVolume(volume: number) {
+    const v = clampVolume(volume);
+    this.patch((s) => applyLocalVolumeDraft(s, v));
+    void this.writeLine(`{"t":"volume","v":${v}}`);
+    window.setTimeout(() => this.patch((s) => clearVolumeDraft(s)), 400);
+  }
+
+  requestPattern() {
+    void this.writeLine('{"t":"pattern_get"}');
+  }
+
+  /** Update local draft and push to device shortly after. */
+  setLocalPattern(pattern: PatternBanks, bank: 0 | 1 | 2 = 0) {
+    this.patch((s) => applyLocalPattern(s, pattern));
+    this.pendingCommitBank = bank;
+    if (this.commitTimer != null) window.clearTimeout(this.commitTimer);
+    this.commitTimer = window.setTimeout(() => {
+      const target = this.pendingCommitBank ?? 0;
+      this.pendingCommitBank = null;
+      this.commitPatternBank(target);
+    }, 180);
+  }
+
+  commitPatternBank(bank: 0 | 1 | 2) {
+    const s = this.state;
+    if (!s.connected) return;
+    const hex = bankHex(s.pattern, bank);
+    void this.writeLine(
+      `{"t":"pattern_set","bank":${bank},"rev":${s.revision},"p":"${hex}"}`,
+    );
+  }
+
+  sendSave() {
+    void this.writeLine('{"t":"save"}');
   }
 }

@@ -49,6 +49,7 @@ BPM 默认范围：`60–240`，启动默认 `120`。
 | S3 | Closed HH | 可实时点按录入 |
 | S4 | Open HH | 与闭镲互斥 |
 | S5 | Clap / Perc | 打击乐 |
+| — | Rimshot | UI / Pattern 第 6 轨（GM 37）；板键仍保留 S6=Fill |
 | S6 | Fill | 按住临时加花，松开回主循环 |
 | S7 | Variation | A/B Pattern 切换 |
 | S8 | Play / Stop | 长按保存 Pattern |
@@ -66,7 +67,8 @@ BPM 默认范围：`60–240`，启动默认 `120`。
 ## 音频合同（项目层）
 
 - 输出路径：板载 MAX98357A（脚位见 `easyinput-board-cy`）
-- MVP 采样：`22050 Hz`、16-bit、mono PCM
+- 引擎采样率：`32000 Hz`、16-bit、连续 I2S 渲染（128 frame）
+- 默认鼓组：`fluid-music/open-drums` 的 public-domain TR-707 one-shot，离线转换为 32 kHz/16-bit/mono PCM 后嵌入固件
 - 短采样预解码后播放；双缓冲 DMA；音频任务高优先级
 - 关键 click/accent 样本优先放内部 RAM；更大 kit 可再用 PSRAM（需在固件中启用）
 - 麦克风暂不进入 P0/P1 实时链路；若后续并用，必须单独验证 I2S 并发
@@ -76,20 +78,23 @@ GPIO8 冷启动/关断顺序必须遵守 `easyinput-board-cy` 的电源合同。
 ## 时序合同（项目层）
 
 - 禁止用普通 `delay()` 推进拍子
-- 内部建议 `96 PPQN`；16 分音符 = 24 tick
-- Swing 调整偶数子拍触发点
-- BPM 变化在下一 tick 平滑生效
-- P1 验收：60/120/240 BPM 下记录平均误差、峰值抖动与约 30 分钟漂移
+- 内部 **`96 PPQN`**；16 分音符 = 24 tick；对外 MIDI Clock = 24 PPQN（每 4 tick）
+- Swing（50–75%）延迟**奇数** 16 分音符触发点
+- BPM 变化保持相位平滑生效
+- Start 归零；Stop 保留位置；Continue 从保留位置继续
+- P1/P2 验收：60/120/240 BPM 与 50/66/75% Swing 下记录平均误差、峰值抖动与约 30 分钟漂移
 
 ## 软件协议
 
-主通道为 **USB Serial + Web Serial**，消息语义对齐 MIDI。详情见 `docs/host-protocol.md` 与 `docs/midi-protocol.md`。
+主通道为 **USB Serial + Web Serial**。消息是领域事件，可映射到 MIDI，但 JSON ≠ MIDI 字节。详情见 `docs/host-protocol.md` 与 `docs/midi-protocol.md`。
 
-- Start / Stop（Clock 后续）
-- 拍点 / BPM / 运行态 JSON 帧（对应 MIDI CC 与 Ch.10 木块音符）
-- 配套 UI：`app/`（Web Serial 自动重连；首次需授权串口）
-- 鼓机阶段继续扩展 Ch.10 语义（36/38/42…），不要再拆第二套实时协议
-- USB MIDI class device 因 ESP32-S3 共享 PHY / macOS 枚举问题暂缓；语义合同保持不变
+- 显式模式：`METRONOME` 只调度 click；`DRUM` 调度 Pattern 并可选叠加 click；上电默认 `METRONOME`
+- Start / Continue / Stop + 位置（bar/step/tick）
+- Pattern get/set + revision；Swing；A/B；Fill；总音量 `0..127`
+- GM Ch.10：36/38/42/46/39/37 + click 76/77
+- 配套 UI：`app/`（Web Serial 自动重连；`hello+state` 后才 synced）
+- BPM/Pattern/Swing/Volume 属于设备管理命令，不用伪标准 CC 冒充
+- USB MIDI class device 因 ESP32-S3 共享 PHY / macOS 枚举问题暂缓；见 `docs/usb-midi-spike.md`
 
 不要把 Wi-Fi/BLE 时延放进实时节拍链路。
 

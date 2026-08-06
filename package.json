@@ -4,6 +4,7 @@
   "packageManager": "pnpm@10.5.0",
   "scripts": {
     "dev": "pnpm --filter easyinput-beatbox-app dev",
-    "build": "pnpm --filter easyinput-beatbox-app build"
+    "build": "pnpm --filter easyinput-beatbox-app build",
+    "test": "pnpm --filter easyinput-beatbox-app test"
   }
 }

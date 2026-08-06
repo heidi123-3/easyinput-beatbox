@@ -1,46 +1,83 @@
 # EasyInput Beatbox MIDI 语义
 
-这是软硬件联动的**语义合同**（运输 + GM 通道 10）。  
-当前固件用 USB Serial 承载同等语义（见 `host-protocol.md`）；后续若启用 USB MIDI class device，消息映射保持一致。
+这是软硬件联动的**语义合同**。  
+当前固件用 USB Serial 承载同等领域事件（见 `host-protocol.md`）；标准 MIDI 字节由适配层编解码。USB MIDI class device 因 ESP32-S3 共享 PHY / macOS 枚举问题暂缓，见 `usb-midi-spike.md`。
 
 ## 为什么用 MIDI 语义
 
-- Start / Stop / Clock 是标准运输语义，适合节拍器与后续跟拍
-- 通道 10 打击乐映射与 GM 兼容，鼓机阶段可自然扩展
-- 电脑端可用 WebMIDI / DAW；当前阶段用 Web Serial 承载同等字段
+- Start / Stop / Continue / Clock / SPP 是专业设备通用运输语义
+- 通道 10 打击乐映射与 GM 兼容，鼓机可自然扩展
+- 电脑端未来可接 WebMIDI / DAW；当前阶段用 Web Serial 承载同等字段
 - 板端继续负责实时发声；电脑端负责可视化与编辑
 
-## Device → Host（语义）
+## 时钟换算
+
+| 单位 | 数量 |
+| --- | --- |
+| 内部 PPQN | 96 |
+| MIDI Clock PPQN | 24 |
+| 1 MIDI Clock | 4 内部 tick |
+| 1 十六分音符 | 24 内部 tick = 6 MIDI Clock = 1 MIDI Beat (SPP) |
+| 1 四分音符 | 96 内部 tick = 24 MIDI Clock |
+
+## Device → Host（标准 MIDI 映射）
 
 | 消息 | 含义 |
 | --- | --- |
-| `0xFA` Start | 开始播放 |
-| `0xFC` Stop | 停止 |
-| `0xF8` Clock | 运行中 24 PPQN（后续） |
-| Ch.10 Note 76 | 重拍（High Wood Block） |
-| Ch.10 Note 77 | 普通拍（Low Wood Block） |
-| CC16 + CC17 | BPM：`BPM = (CC16<<7) \| CC17` |
-| CC18 | 小节内拍号 0–3 |
-| CC19 | 运行状态 0/1 |
+| `0xFA` Start | 从 song position 0 开始 |
+| `0xFB` Continue | 从当前 song position 继续 |
+| `0xFC` Stop | 停止；保留 song position |
+| `0xF8` Clock | 运行中 24 PPQN |
+| `0xF2` SPP | 14-bit MIDI Beat（十六分音符计数） |
+| Ch.10 Note On | 鼓音 / click：见下表 |
+| Ch.10 Note Off | 对应释音（短采样可忽略） |
 
-## Host → Device（语义）
+### GM Channel 10 映射
+
+| Note | 用途 | 板端按键 |
+| --- | --- | --- |
+| 36 | Kick | S1 |
+| 38 | Snare | S2 |
+| 42 | Closed HH | S3 |
+| 46 | Open HH | S4 |
+| 39 | Clap | S5 |
+| 37 | Rimshot | UI / Pattern 第 6 轨 |
+| 76 | 重拍 click（High Wood Block） | 节拍器 accent |
+| 77 | 普通拍 click（Low Wood Block） | 节拍器 normal |
+
+控制键（非音符）：
+
+| 按键 | 功能 |
+| --- | --- |
+| S6 | Fill（按住） |
+| S7 | Variation A/B |
+| S8 / 编码器按压 | Play / Stop |
+
+## Host → Device（标准 MIDI 映射）
 
 | 消息 | 含义 |
 | --- | --- |
-| Start / Continue | 开始或继续 |
-| Stop | 停止 |
-| CC16 / CC17 | 设置 BPM（同上编码） |
+| Start / Continue / Stop | 运输 |
+| Clock | 仅在未来 external-clock slave 模式使用 |
+| SPP | 定位到十六分音符边界 |
+| Ch.10 Note On | Live Pad / 外部触发 |
 
-## 鼓机预留（后续）
+## 非 MIDI 的设备管理命令
 
-仍在通道 10，建议：
+以下保留在 Serial JSON，**不要**伪装成通用 MIDI CC：
 
-| Note | 用途 |
-| --- | --- |
-| 36 | Kick |
-| 38 | Snare |
-| 42 | Closed HH |
-| 46 | Open HH |
-| 39 | Clap |
+- BPM（60–240）
+- Swing（50–75）
+- Pattern get/set + revision
+- Click enable
+- Save
 
-板端 Live Pad 与电脑端鼓机组共用同一映射。
+历史草案中的 CC16/CC17 BPM 编码已废弃，避免与厂商自定义 CC 冲突并误导 DAW 用户。
+
+## 适配层
+
+TypeScript 纯函数见 `app/src/midi-adapter.ts`：
+
+- 领域事件 → MIDI 字节
+- MIDI 字节 → 领域事件
+- 不依赖 Web Serial / WebMIDI 传输实现
