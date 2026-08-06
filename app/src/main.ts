@@ -63,15 +63,18 @@ const root = document.querySelector<HTMLDivElement>("#app")!;
 
 root.innerHTML = `
   <header class="top">
-    <div class="identity">
-      <span class="eyebrow">EASYINPUT / PERFORMANCE TOOL</span>
-      <h1 class="brand">Beatbox</h1>
-    </div>
-    <div class="top-actions">
-      <button class="connect-button" id="btnConnect" type="button" aria-label="连接设备">
-        <span class="dot" id="connDot"></span>
-        <span id="connLabel">连接设备</span>
-      </button>
+    <div class="titlebar-spacer" aria-hidden="true"></div>
+    <div class="top-bar">
+      <div class="identity">
+        <h1 class="brand">Beatbox</h1>
+        <span class="eyebrow">EasyInput · Performance</span>
+      </div>
+      <div class="top-actions">
+        <button class="connect-button" id="btnConnect" type="button" aria-label="连接设备">
+          <span class="dot" id="connDot"></span>
+          <span id="connLabel">连接设备</span>
+        </button>
+      </div>
     </div>
   </header>
 

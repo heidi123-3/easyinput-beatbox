@@ -6,6 +6,7 @@
 - **产品约定**：`.cursor/skills/easyinput-drum-machine`
 - **固件**：`firmware/`
 - **配套 UI**：`app/`（Chrome / Edge + Web Serial）
+- **桌面壳**：`desktop/`（Electron；因 Web Serial 不用 Tauri）
 - **主机协议**：`docs/host-protocol.md`（MIDI 语义见 `docs/midi-protocol.md`）
 
 ## 当前能力
@@ -25,6 +26,7 @@ easyinput-beatbox/
 ├── .cursor/skills/
 ├── firmware/                 # ESP-IDF
 ├── app/                      # Vite + Web Serial 配套界面
+├── desktop/                  # Electron 套壳（Web Serial）
 ├── docs/
 │   ├── product-contract.md
 │   ├── host-protocol.md
@@ -56,6 +58,21 @@ pnpm test
 ```
 
 用 **Chrome / Edge** 打开本地地址。首次点击「连接」授权 Espressif 串口；之后插拔可自动重连。连接后需收到 `hello` + `state` 才进入 synced。
+
+### 桌面应用（Electron）
+
+本应用依赖 Web Serial：macOS 上 Tauri 的系统 WebView 不支持，因此用 Electron。
+
+```bash
+# 开发：先起网页，再开桌面窗
+pnpm dev          # terminal 1 — Vite :5173
+pnpm desktop:dev  # terminal 2 — Electron
+
+# 或加载已构建的 app/dist
+pnpm desktop:start
+```
+
+桌面窗内点击「连接」即可选串口（会优先 Espressif VID）。
 
 ## 硬件交互
 

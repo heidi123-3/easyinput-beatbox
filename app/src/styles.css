@@ -51,10 +51,78 @@ button {
 
 .top {
   display: flex;
-  align-items: end;
+  flex-direction: column;
+  gap: 0;
+  margin-bottom: 26px;
+}
+
+.titlebar-spacer {
+  display: none;
+}
+
+.top-bar {
+  display: flex;
+  align-items: flex-end;
   justify-content: space-between;
   gap: 24px;
-  margin-bottom: 26px;
+}
+
+/* Electron: traffic-light row on top, title lockup left-aligned below. */
+html.electron-shell #app {
+  width: calc(100% - 28px);
+  max-width: none;
+  padding: 0 0 20px;
+}
+
+html.electron-shell .titlebar-spacer {
+  display: block;
+  height: 38px;
+  flex: 0 0 auto;
+  -webkit-app-region: drag;
+}
+
+html.electron-shell .top {
+  margin-bottom: 14px;
+}
+
+html.electron-shell .top-bar {
+  -webkit-app-region: drag;
+  align-items: center;
+  gap: 16px;
+  padding: 2px 0 0;
+}
+
+html.electron-shell .top-actions,
+html.electron-shell .top button,
+html.electron-shell .top a,
+html.electron-shell .connect-button {
+  -webkit-app-region: no-drag;
+}
+
+html.electron-shell .identity {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 12px;
+}
+
+html.electron-shell .brand {
+  font-size: clamp(2.35rem, 3.8vw, 2.9rem);
+  letter-spacing: -0.045em;
+  line-height: 1;
+}
+
+html.electron-shell .eyebrow {
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+html.electron-shell .connect-button {
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 0.72rem;
 }
 
 .identity {
@@ -80,6 +148,7 @@ button {
   color: var(--accent);
   font-size: 0.67rem;
   font-weight: 600;
+  order: 2;
 }
 
 .brand {
@@ -88,6 +157,16 @@ button {
   line-height: 0.9;
   letter-spacing: -0.055em;
   font-weight: 800;
+  order: 1;
+}
+
+/* Browser: keep product mark above the wordmark. */
+html:not(.electron-shell) .eyebrow {
+  order: 1;
+}
+
+html:not(.electron-shell) .brand {
+  order: 2;
 }
 
 .top-actions {
