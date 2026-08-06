@@ -18,6 +18,11 @@ __pycache__/
 .env
 .env.*
 
+# App
+node_modules/
+app/node_modules/
+app/dist/
+
 # Local artifacts
 *.log
 dist/

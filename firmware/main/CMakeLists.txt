@@ -6,10 +6,17 @@ idf_component_register(
         "ui/led_status.c"
         "audio/audio_click.c"
         "seq/tempo.c"
+        "host/host_link.c"
     INCLUDE_DIRS
         "."
         "board"
         "audio"
         "seq"
         "ui"
+        "host"
+    REQUIRES
+        esp_driver_pcnt
+        esp_driver_gpio
+        esp_driver_i2s
+        esp_timer
 )

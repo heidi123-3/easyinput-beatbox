@@ -81,15 +81,15 @@ GPIO8 冷启动/关断顺序必须遵守 `easyinput-board-cy` 的电源合同。
 - BPM 变化在下一 tick 平滑生效
 - P1 验收：60/120/240 BPM 下记录平均误差、峰值抖动与约 30 分钟漂移
 
-## 软件协议（P3，先占位）
+## 软件协议
 
-USB Serial / WebSerial 优先；命令语义先冻结字段名，编码可后定：
+主通道为 **USB Serial + Web Serial**，消息语义对齐 MIDI。详情见 `docs/host-protocol.md` 与 `docs/midi-protocol.md`。
 
-- `transport`：play / stop / continue
-- `tempo`：BPM
-- `pattern`：步序读写
-- `kit`：音色包清单
-- `status`：position、version、battery（若启用）
+- Start / Stop（Clock 后续）
+- 拍点 / BPM / 运行态 JSON 帧（对应 MIDI CC 与 Ch.10 木块音符）
+- 配套 UI：`app/`（Web Serial 自动重连；首次需授权串口）
+- 鼓机阶段继续扩展 Ch.10 语义（36/38/42…），不要再拆第二套实时协议
+- USB MIDI class device 因 ESP32-S3 共享 PHY / macOS 枚举问题暂缓；语义合同保持不变
 
 不要把 Wi-Fi/BLE 时延放进实时节拍链路。
 

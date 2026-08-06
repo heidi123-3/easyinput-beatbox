@@ -1,45 +1,47 @@
 # EasyInput Beatbox 产品合同
 
-本文件是项目层产品约定的可读版。Agent 开发时以 `.cursor/skills/easyinput-drum-machine/SKILL.md` 为准；硬件事实以 `easyinput-board-cy` 为准。
+硬件事实以 `easyinput-board-cy` 为准；本文件描述产品层行为。
 
-## 硬件基线
+## 音色目标
 
-- 产品名：EasyInput V2.0
-- 固件板型别名：v2
-- PCB 丝印：AI Keyboard V2.1
-- 扬声器路径：板载 MAX98357A（GPIO 见板级 Skill）
-- 共享电源：GPIO8 同时供 WS2812 / MIC / SPK
+参考录音室 click / clave / 木块实践：
 
-## 阶段目标
+- 干声、短瞬态、锐利起音（当前 click 约 9 ms）
+- 主体约 2.0–2.5 kHz clave 感，而不是长鸣正弦或刺耳方波
+- 削去过高频能量，降低长时间听感疲劳
+- 重拍与普通拍以音高/音色区分，音量差保持克制
 
-### P0 · 冒烟
+板端合成实现见 `firmware/main/audio/audio_click.c`。
 
-1. 按板级合同安全拉高 GPIO8
-2. 5 颗 WS2812 显示可识别图案
-3. MAX98357A 播放短 click
+## 时钟与音频链路
 
-### P1 · 独立节拍器
+- I2S `32000 Hz` 采样时钟是唯一节拍时间源；UI、USB 与灯光不得驱动声音触发
+- 连续渲染 `128 frame`（4 ms）音频块，不在每拍临时启动/停止 DMA
+- Q32 定点相位累计决定拍点在音频块内的精确采样位置，避免整数 BPM 截断漂移
+- 外部音符进入队列；8 个预分配 voice 独立播放并在 `int32` 累加器中混音
+- 音频线程不分配内存、不等待 UI/USB 锁，也不执行灯带更新
+- `scripts/check_timing_model.py` 必须覆盖 60–240 BPM、每档 30 分钟；允许误差不超过 1 sample
 
-- 旋钮调节 BPM（60–240，默认 120）
-- 短按启停
-- RGB 显示拍点/重拍
-- 板端播放 click / accent
+## 交互目标
 
-### P2 · 八轨鼓机
+参考机械节拍器与常见桌面节拍器：
 
-- 16 步 sequencer
-- Live Pad 键位映射见鼓机 Skill
-- Fill / Variation / Swing
-- NVS 保存 Pattern
+- 板端可独立使用：旋钮 BPM + 编码器/S8 启停
+- 视觉可预期下一拍（灯来回走；电脑端钟摆 + 拍点灯）
+- 电脑端连接后自动识别设备，显示 BPM、运行态、拍号
+- 键盘：空格启停，方向键微调 BPM
+- 为鼓机预留 Pad / 序列界面，不把节拍器做成死胡同产品
 
-### P3 · 配套软件
+## 连接
 
-- USB Serial / WebSerial
-- Pattern / Kit 可视化编辑
-- 与板端状态双向同步
+- **当前主通道**：USB Serial + Web Serial（`host-protocol.md`）
+- **语义合同**：MIDI 运输 / GM Ch.10（`midi-protocol.md`）
+- 选择原因：ESP32-S3 共享 PHY，macOS 上 TinyUSB MIDI 易被 JTAG/Serial 抢枚举；Serial 可稳定烧录+联动
 
-## 非目标（现阶段）
+## 阶段
 
-- 不在板端跑大模型
-- 不把 Wi-Fi 音频传输放进节拍实时路径
-- 不修改或分叉 `easyinput-board-cy` 作为业务真相源
+| 阶段 | 状态目标 |
+| --- | --- |
+| P1 | 独立节拍器 + 主机链路 + 配套 UI |
+| P2 | 八键鼓机 / 16 步，复用通道 10 语义 |
+| P3 | UI 编辑 Pattern / Kit；可选 USB MIDI class |

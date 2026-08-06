@@ -52,7 +52,7 @@ extern "C" {
 
 /* Project power policy: settle wait after enabling GPIO8.
  * Board skill marks the hardware minimum as UNKNOWN; qualify on hardware. */
-#define BOARD_PWR_SETTLE_MS          20
+#define BOARD_PWR_SETTLE_MS          50
 
 #ifdef __cplusplus
 }
