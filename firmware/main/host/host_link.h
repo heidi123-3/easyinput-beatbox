@@ -45,6 +45,8 @@ typedef void (*host_on_volume_fn)(uint8_t volume);
 typedef void (*host_on_pattern_set_fn)(uint8_t bank, uint32_t rev, const uint8_t *bytes);
 typedef void (*host_on_save_fn)(void);
 typedef void (*host_on_ping_fn)(void);
+/** Host overdub arming: when true, device ignores S7/S8/encoder transport. */
+typedef void (*host_on_record_fn)(bool armed);
 
 typedef struct {
     host_on_transport_fn on_transport;
@@ -59,6 +61,7 @@ typedef struct {
     host_on_pattern_set_fn on_pattern_set;
     host_on_save_fn on_save;
     host_on_ping_fn on_ping;
+    host_on_record_fn on_record;
 } host_link_handlers_t;
 
 void host_link_set_handlers(const host_link_handlers_t *handlers);

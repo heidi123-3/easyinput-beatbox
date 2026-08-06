@@ -22,6 +22,8 @@ static bool s_prev_keys[8];
 static bool s_fill_held;
 /* Power-on product mode is the standalone P1 metronome. */
 static bool s_drum_mode;
+/* Host UI overdub: lock S7 / S8 / encoder press while armed. */
+static bool s_record_armed;
 
 static void send_status(void)
 {
@@ -203,6 +205,14 @@ static void on_host_ping(void)
     send_status();
 }
 
+static void on_host_record(bool armed)
+{
+    s_record_armed = armed;
+    if (armed && s_fill_held) {
+        on_host_fill(false);
+    }
+}
+
 static void handle_pads(const board_input_snapshot_t *in)
 {
     /*
@@ -233,29 +243,43 @@ static void handle_pads(const board_input_snapshot_t *in)
         }
     }
 
-    /* S7: hold engages Fill; short tap toggles A/B. */
-    if (in->s[6] && !s_prev_keys[6]) {
-        s7_down_us = now;
-        s7_armed = true;
-        s7_fill_from_hold = false;
-    }
-    if (in->s[6] && s7_armed && !s7_fill_from_hold && (now - s7_down_us) >= fill_hold_us) {
-        s7_fill_from_hold = true;
-        if (!s_fill_held) {
-            on_host_fill(true);
-        }
-    }
-    if (!in->s[6] && s_prev_keys[6]) {
-        if (s7_fill_from_hold) {
-            if (s_fill_held) {
+    if (s_record_armed) {
+        /* Recording: ignore S7 A/B|Fill and clear any pending hold state. */
+        if (!in->s[6] && s_prev_keys[6]) {
+            if (s7_fill_from_hold && s_fill_held) {
                 on_host_fill(false);
             }
-        } else if (s7_armed) {
-            pattern_request_variation(pattern_variation() ? 0 : 1);
-            send_status();
+            s7_armed = false;
+            s7_fill_from_hold = false;
+        } else if (!in->s[6]) {
+            s7_armed = false;
+            s7_fill_from_hold = false;
         }
-        s7_armed = false;
-        s7_fill_from_hold = false;
+    } else {
+        /* S7: hold engages Fill; short tap toggles A/B. */
+        if (in->s[6] && !s_prev_keys[6]) {
+            s7_down_us = now;
+            s7_armed = true;
+            s7_fill_from_hold = false;
+        }
+        if (in->s[6] && s7_armed && !s7_fill_from_hold && (now - s7_down_us) >= fill_hold_us) {
+            s7_fill_from_hold = true;
+            if (!s_fill_held) {
+                on_host_fill(true);
+            }
+        }
+        if (!in->s[6] && s_prev_keys[6]) {
+            if (s7_fill_from_hold) {
+                if (s_fill_held) {
+                    on_host_fill(false);
+                }
+            } else if (s7_armed) {
+                pattern_request_variation(pattern_variation() ? 0 : 1);
+                send_status();
+            }
+            s7_armed = false;
+            s7_fill_from_hold = false;
+        }
     }
 
     for (int i = 0; i < 8; ++i) {
@@ -283,6 +307,7 @@ void app_main(void)
         .on_pattern_set = on_host_pattern_set,
         .on_save = on_host_save,
         .on_ping = on_host_ping,
+        .on_record = on_host_record,
     };
     host_link_set_handlers(&handlers);
 
@@ -318,7 +343,8 @@ void app_main(void)
         ESP_ERROR_CHECK(board_keys_poll(&in));
         apply_encoder_bpm(in.enc_delta);
 
-        if (in.enc_press) {
+        /* S8 / encoder press: Play-Stop — locked out while host REC is armed. */
+        if (in.enc_press && !s_record_armed) {
             /* Encoder click mirrors S8 in the host pad matrix when S8 wasn't the source. */
             if (!in.s[7]) {
                 host_link_send_key(7, true);

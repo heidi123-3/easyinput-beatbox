@@ -6,7 +6,12 @@ import {
   applyLocalBpmDraft,
   applyLocalPattern,
 } from "./device-store";
-import { createEmptyBanks } from "./pattern";
+import { createEmptyBanks, overdubStep } from "./pattern";
+import {
+  exportPatternFile,
+  parsePatternFile,
+  patternFileToJson,
+} from "./pattern-io";
 import {
   clampBpm,
   decodePatternHex,
@@ -122,5 +127,32 @@ describe("midi adapter", () => {
       note: 38,
       velocity: 120,
     });
+  });
+});
+
+describe("overdub and pattern io", () => {
+  it("overdubs without clearing other steps", () => {
+    const tracks = emptyTracks();
+    tracks[0][0] = 120;
+    const next = overdubStep(tracks, 1, 4, 110);
+    expect(next[0][0]).toBe(120);
+    expect(next[1][4]).toBe(110);
+    expect(tracks[1][4]).toBe(0);
+  });
+
+  it("round-trips pattern file json", () => {
+    const banks = createEmptyBanks(3);
+    banks.a[0][0] = 100;
+    banks.b[1][4] = 90;
+    banks.fill[2][8] = 80;
+    const file = exportPatternFile(banks, { bpm: 128, swing: 58 });
+    const parsed = parsePatternFile(patternFileToJson(file));
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.banks.a[0][0]).toBe(100);
+    expect(parsed.banks.b[1][4]).toBe(90);
+    expect(parsed.banks.fill[2][8]).toBe(80);
+    expect(parsed.file.bpm).toBe(128);
+    expect(parsed.file.swing).toBe(58);
   });
 });

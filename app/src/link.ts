@@ -245,6 +245,11 @@ export class BeatboxLink {
     void this.writeLine(`{"t":"fill","v":${held ? 1 : 0}}`);
   }
 
+  /** Arm host overdub on device: locks S7 / S8 / encoder transport. */
+  sendRecord(armed: boolean) {
+    void this.writeLine(`{"t":"record","v":${armed ? 1 : 0}}`);
+  }
+
   sendNote(note: number, velocity = 127) {
     const n = note & 0x7f;
     const v = Math.max(1, velocity & 0x7f);
@@ -282,6 +287,18 @@ export class BeatboxLink {
       const target = this.pendingCommitBank ?? 0;
       this.pendingCommitBank = null;
       this.commitPatternBank(target);
+    }, 180);
+  }
+
+  /** Replace all banks locally and push A/B/Fill to the device. */
+  setLocalPatternAll(pattern: PatternBanks) {
+    this.patch((s) => applyLocalPattern(s, pattern));
+    if (this.commitTimer != null) window.clearTimeout(this.commitTimer);
+    this.pendingCommitBank = null;
+    this.commitTimer = window.setTimeout(() => {
+      this.commitPatternBank(0);
+      this.commitPatternBank(1);
+      this.commitPatternBank(2);
     }, 180);
   }
 

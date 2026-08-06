@@ -32,7 +32,7 @@ UTF-8，一行一条 JSON，`\n` 结尾。非 `{` 开头的行忽略（兼容偶
 
 | 消息 | 含义 |
 | --- | --- |
-| `{"t":"hello","v":2,"name":"EasyInput Beatbox","caps":["drum","pattern","swing","volume"]}` | 身份与能力 |
+| `{"t":"hello","v":2,"name":"EasyInput Beatbox","caps":["drum","pattern","swing","volume","record"]}` | 身份与能力 |
 | `{"t":"state","bpm":120,"run":0,"beat":0,"step":0,"bar":0,"tick":0,"swing":50,"var":0,"fill":0,"rev":1,"click":1,"mode":0,"vol":100}` | 完整状态快照（约 2 Hz + 事件） |
 | `{"t":"position","bar":0,"step":0,"beat":0,"tick":0,"accent":1}` | 步进位置（播放中） |
 | `{"t":"beat","accent":1,"beat":0,"step":0}` | 四分拍点（v1 兼容；含 step0–15） |
@@ -75,6 +75,7 @@ UTF-8，一行一条 JSON，`\n` 结尾。非 `{` 开头的行忽略（兼容偶
 | `{"t":"pattern_get"}` | 请求 `pattern_dump` |
 | `{"t":"pattern_set","bank":0,"rev":1,"p":"<192 hex>"}` | 写入单 bank；设备采用最后写入者生效 |
 | `{"t":"save"}` | 请求将 Pattern 标记为已保存（MVP：bump rev + ack；NVS 后续） |
+| `{"t":"record","v":1}` | 主机叠录武装：`1` 时锁定 S7 / S8 / 编码器启停；`0` 解除 |
 | `{"t":"ping"}` | 请求 `hello` + 紧随 `state` + `pattern_dump` |
 
 ## 运输语义

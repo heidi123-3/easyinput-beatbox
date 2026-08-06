@@ -1,13 +1,30 @@
-import { createIcons, Eraser, Pause, Play, Trash2, Volume2, VolumeX } from "lucide";
+import {
+  createIcons,
+  Download,
+  Eraser,
+  Pause,
+  Play,
+  Trash2,
+  Upload,
+  Volume2,
+  VolumeX,
+} from "lucide";
 import "./styles.css";
 import { DRUM_ICONS, type DrumIconId } from "./drum-icons";
 import { BeatboxLink } from "./link";
 import {
   clearPattern,
   clearTrack,
+  overdubStep,
   toggleStep,
   type PatternBanks,
 } from "./pattern";
+import {
+  downloadTextFile,
+  exportPatternFile,
+  parsePatternFile,
+  patternFileToJson,
+} from "./pattern-io";
 import {
   NOTE_CHH,
   NOTE_CLAP,
@@ -174,6 +191,11 @@ root.innerHTML = `
           <button type="button" class="seg-btn" id="btnBankFill"
                   title="编辑加花谱；按住试听">加花</button>
         </div>
+        <button type="button" class="rec-btn" id="btnRec" disabled
+                title="叠录到当前 A / B Pattern">
+          <span class="rec-dot" aria-hidden="true"></span>
+          <span>REC</span>
+        </button>
         <p class="pattern-status" id="patternStatus">PATTERN A</p>
       </div>
 
@@ -188,22 +210,35 @@ root.innerHTML = `
       </div>
 
       <div class="seq-footer">
-        <button type="button" class="ghost-btn" id="btnClearTrack" disabled
-                title="清空当前选中轨道">
-          <i data-lucide="eraser"></i>
-          <span>清空本轨</span>
-        </button>
-        <button type="button" class="ghost-btn" id="btnClearPattern" disabled
-                title="清空当前 Pattern 全部轨道">
-          <i data-lucide="trash-2"></i>
-          <span>清空全部</span>
-        </button>
+        <div class="footer-left">
+          <button type="button" class="ghost-btn" id="btnImport" disabled title="导入 Pattern JSON">
+            <i data-lucide="upload"></i>
+            <span>导入</span>
+          </button>
+          <button type="button" class="ghost-btn" id="btnExport" disabled title="导出 Pattern JSON">
+            <i data-lucide="download"></i>
+            <span>导出</span>
+          </button>
+          <input id="importFile" type="file" accept="application/json,.json" hidden />
+        </div>
+        <div class="footer-right">
+          <button type="button" class="ghost-btn" id="btnClearTrack" disabled
+                  title="清空当前选中轨道">
+            <i data-lucide="eraser"></i>
+            <span>清空本轨</span>
+          </button>
+          <button type="button" class="ghost-btn" id="btnClearPattern" disabled
+                  title="清空当前 Pattern 全部轨道">
+            <i data-lucide="trash-2"></i>
+            <span>清空全部</span>
+          </button>
+        </div>
       </div>
     </section>
   </main>
 `;
 
-createIcons({ icons: { Eraser, Pause, Play, Trash2, Volume2, VolumeX } });
+createIcons({ icons: { Download, Eraser, Pause, Play, Trash2, Upload, Volume2, VolumeX } });
 
 const padsEl = root.querySelector<HTMLDivElement>("#pads")!;
 for (const pad of HW_PADS) {
@@ -282,7 +317,11 @@ const els = {
   btnBankA: root.querySelector<HTMLButtonElement>("#btnBankA")!,
   btnBankB: root.querySelector<HTMLButtonElement>("#btnBankB")!,
   btnBankFill: root.querySelector<HTMLButtonElement>("#btnBankFill")!,
+  btnRec: root.querySelector<HTMLButtonElement>("#btnRec")!,
   patternStatus: root.querySelector<HTMLElement>("#patternStatus")!,
+  btnImport: root.querySelector<HTMLButtonElement>("#btnImport")!,
+  btnExport: root.querySelector<HTMLButtonElement>("#btnExport")!,
+  importFile: root.querySelector<HTMLInputElement>("#importFile")!,
   btnClearTrack: root.querySelector<HTMLButtonElement>("#btnClearTrack")!,
   btnClearPattern: root.querySelector<HTMLButtonElement>("#btnClearPattern")!,
   pads: [...root.querySelectorAll<HTMLButtonElement>(".pad")],
@@ -302,6 +341,20 @@ let volumeFrame = 0;
 let editBank: 0 | 1 | 2 = 0;
 let selectedTrack = 0;
 let undoStack: PatternBanks[] = [];
+let recording = false;
+let prevKeysDown = [false, false, false, false, false, false, false, false];
+let prevRunning = false;
+let statusFlashTimer = 0;
+
+function flashPatternStatus() {
+  els.patternStatus.classList.remove("flash");
+  void els.patternStatus.offsetWidth;
+  els.patternStatus.classList.add("flash");
+  if (statusFlashTimer) window.clearTimeout(statusFlashTimer);
+  statusFlashTimer = window.setTimeout(() => {
+    els.patternStatus.classList.remove("flash");
+  }, 700);
+}
 
 function currentTracks(pattern: PatternBanks) {
   if (editBank === 1) return pattern.b;
@@ -331,10 +384,63 @@ function updateTransportIcon(running: boolean) {
   createIcons({ icons: { Pause, Play } });
 }
 
-function patternStatusText(edit: 0 | 1 | 2): string {
-  if (edit === 1) return "PATTERN B";
+function patternStatusText(edit: 0 | 1 | 2, isRecording: boolean): string {
   if (edit === 2) return "FILL · HOLD TO AUDITION";
-  return "PATTERN A";
+  const bank = edit === 1 ? "PATTERN B" : "PATTERN A";
+  if (!isRecording) return bank;
+  return `RECORDING · ${bank} · S7/S8 LOCKED`;
+}
+
+function stopRecording(announce = true, stopTransport = false) {
+  if (!recording) return;
+  recording = false;
+  if (link.getState().connected) link.sendRecord(false);
+  if (stopTransport && link.getState().running) link.sendStop();
+  if (announce) flashPatternStatus();
+}
+
+/** Transport stop also ends overdub so REC and playhead stay in sync. */
+function stopTransportAndRecording() {
+  if (recording) stopRecording(true, false);
+  if (link.getState().running) link.sendStop();
+}
+
+function toggleTransport() {
+  const s = link.getState();
+  if (!s.connected) return;
+  if (s.running) {
+    stopTransportAndRecording();
+    return;
+  }
+  if (s.bar === 0 && s.step === 0 && s.tick === 0) link.sendStart();
+  else link.sendContinue();
+}
+
+function noteToTrack(note: number): number {
+  return TRACK_NOTES.indexOf(note as (typeof TRACK_NOTES)[number]);
+}
+
+/** Quantized overdub into the active A/B bank using the device playhead step. */
+function recordHit(note: number, velocity = 110) {
+  if (!recording || editBank > 1) return;
+  const track = noteToTrack(note);
+  if (track < 0) return;
+  const step = link.getState().step & 0x0f;
+  selectedTrack = track;
+  mutatePattern((p) =>
+    withCurrentTracks(p, overdubStep(currentTracks(p), track, step, velocity)),
+  );
+}
+
+function startRecording() {
+  if (editBank > 1) return;
+  const s = link.getState();
+  if (!s.connected) return;
+  recording = true;
+  link.sendRecord(true);
+  if (!s.drumMode) link.sendMode(true);
+  if (!s.running) link.sendStart();
+  flashPatternStatus();
 }
 
 function renderPatternGrid() {
@@ -410,27 +516,48 @@ function render() {
   }
   els.metroState.textContent = s.click ? "开" : "关";
   els.drumState.textContent = s.drumMode ? "开" : "关";
+  if (!s.connected && recording) stopRecording();
+
   els.btnClearTrack.disabled = !ready;
   els.btnClearPattern.disabled = !ready;
+  els.btnImport.disabled = !ready;
+  els.btnExport.disabled = !ready;
   els.btnBankA.disabled = !ready;
   els.btnBankB.disabled = !ready;
   els.btnBankFill.disabled = !ready;
+  const recAllowed = ready && editBank < 2;
+  els.btnRec.disabled = !recAllowed;
+  els.btnRec.title = editBank > 1
+    ? "请先选 A 或 B 再录音"
+    : recording
+      ? "结束录音（运输继续）"
+      : "开始叠录到当前 A / B";
+  els.btnRec.classList.toggle("armed", recording);
+  els.btnRec.setAttribute("aria-pressed", recording ? "true" : "false");
+  const recLabel = els.btnRec.querySelector("span:last-child");
+  if (recLabel) recLabel.textContent = recording ? "STOP" : "REC";
+  els.patternStatus.classList.toggle("recording", recording);
   const now = Date.now();
   for (const pad of els.pads) {
     const idx = Number(pad.dataset.pad);
-    pad.disabled = !ready;
-    const lit = !!s.keysDown[idx] || now < (s.keyFlashUntil[idx] ?? 0);
+    const meta = HW_PADS[idx];
+    const controlLocked = recording && meta.role !== "drum";
+    pad.disabled = !ready || controlLocked;
+    pad.classList.toggle("locked", controlLocked);
+    const lit = !controlLocked && (!!s.keysDown[idx] || now < (s.keyFlashUntil[idx] ?? 0));
     pad.classList.toggle("lit", lit);
-    pad.classList.toggle("held", !!s.keysDown[idx]);
+    pad.classList.toggle("held", !controlLocked && !!s.keysDown[idx]);
   }
   root.querySelector(".panel.drum")?.classList.toggle("layer-off", ready && !s.drumMode);
   root.querySelector(".panel.metro")?.classList.toggle("layer-off", ready && !s.click);
+  root.querySelector(".panel.drum")?.classList.toggle("recording", recording);
 
   els.btnBankA.classList.toggle("active", editBank === 0);
   els.btnBankB.classList.toggle("active", editBank === 1);
   els.btnBankFill.classList.toggle("active", editBank === 2);
-  els.btnBankFill.classList.toggle("audition", s.fill);
-  els.patternStatus.textContent = patternStatusText(editBank);
+  els.btnBankFill.classList.toggle("audition", s.fill && !recording);
+  els.btnBankFill.disabled = !ready || recording;
+  els.patternStatus.textContent = patternStatusText(editBank, recording);
 
   if (s.step !== lastStep) {
     lastStep = s.step;
@@ -476,6 +603,30 @@ link.subscribe((s) => {
     active.classList.add("strike");
   }
   if (!s.running) lastBeatIndex = -1;
+
+  /* Device/UI transport stop → leave REC so states stay aligned. */
+  if (prevRunning && !s.running && recording) {
+    stopRecording(true);
+  }
+  prevRunning = s.running;
+
+  /* Physical S1–S6 only — ignore sequencer note echoes. */
+  const physicalHits: number[] = [];
+  if (recording && editBank < 2) {
+    for (let i = 0; i < 6; i++) {
+      if (s.keysDown[i] && !prevKeysDown[i]) {
+        const meta = HW_PADS[i];
+        if (meta.role === "drum" && meta.note != null) {
+          physicalHits.push(meta.note);
+        }
+      }
+    }
+  }
+  prevKeysDown = s.keysDown.slice();
+  for (const note of physicalHits) {
+    recordHit(note, 110);
+  }
+
   render();
   const soonest = Math.min(...s.keyFlashUntil.filter((t) => t > Date.now()), Number.POSITIVE_INFINITY);
   if (Number.isFinite(soonest)) {
@@ -485,10 +636,7 @@ link.subscribe((s) => {
 });
 
 els.btnTransport.addEventListener("click", () => {
-  const s = link.getState();
-  if (s.running) link.sendStop();
-  else if (s.bar === 0 && s.step === 0 && s.tick === 0) link.sendStart();
-  else link.sendContinue();
+  toggleTransport();
 });
 
 els.metroEnable.addEventListener("change", () => {
@@ -583,8 +731,16 @@ els.btnBankB.addEventListener("click", () => {
 
 let fillPreviewTimer = 0;
 let fillPreviewHeld = false;
+els.btnRec.addEventListener("click", () => {
+  if (editBank > 1 || !link.getState().connected) return;
+  if (recording) stopRecording(true, true);
+  else startRecording();
+  render();
+});
+
 els.btnBankFill.addEventListener("pointerdown", (ev) => {
   ev.preventDefault();
+  if (recording) return; /* locked during REC */
   editBank = 2;
   render();
   if (!link.getState().connected) return;
@@ -616,6 +772,40 @@ els.btnClearPattern.addEventListener("click", () => {
   mutatePattern((p) => withCurrentTracks(p, clearPattern(currentTracks(p))));
 });
 
+els.btnExport.addEventListener("click", () => {
+  const s = link.getState();
+  const file = exportPatternFile(s.pattern, { bpm: s.bpm, swing: s.swing });
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+  downloadTextFile(`beatbox-pattern-${stamp}.json`, patternFileToJson(file));
+});
+
+els.btnImport.addEventListener("click", () => {
+  els.importFile.value = "";
+  els.importFile.click();
+});
+
+els.importFile.addEventListener("change", async () => {
+  const file = els.importFile.files?.[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const parsed = parsePatternFile(text);
+    if (!parsed.ok) {
+      els.err.hidden = false;
+      els.err.textContent = parsed.error;
+      return;
+    }
+    pushUndo(link.getState().pattern);
+    link.setLocalPatternAll(parsed.banks);
+    if (parsed.file.bpm != null) link.sendBpm(parsed.file.bpm);
+    if (parsed.file.swing != null) link.sendSwing(parsed.file.swing);
+    els.err.hidden = true;
+  } catch (e) {
+    els.err.hidden = false;
+    els.err.textContent = e instanceof Error ? e.message : "导入失败";
+  }
+});
+
 let s7HoldTimer = 0;
 let s7FillArmed = false;
 for (const pad of els.pads) {
@@ -627,6 +817,11 @@ for (const pad of els.pads) {
     pad.classList.add("active", "lit");
     if (meta.role === "drum" && meta.note != null) {
       link.sendNote(meta.note, 127);
+      /* UI pad path — physical keys are recorded via key rising-edge. */
+      recordHit(meta.note, 110);
+    } else if (recording) {
+      /* S7 / S8 locked while recording. */
+      return;
     } else if (meta.role === "abfill") {
       s7FillArmed = false;
       if (s7HoldTimer) window.clearTimeout(s7HoldTimer);
@@ -689,11 +884,7 @@ window.addEventListener("keydown", (ev) => {
   if (ev.target instanceof HTMLInputElement || ev.target instanceof HTMLTextAreaElement) return;
   if (ev.code === "Space") {
     ev.preventDefault();
-    const s = link.getState();
-    if (!s.connected) return;
-    if (s.running) link.sendStop();
-    else if (s.bar === 0 && s.step === 0 && s.tick === 0) link.sendStart();
-    else link.sendContinue();
+    toggleTransport();
   } else if (ev.key === "ArrowLeft") {
     link.sendBpm(link.getState().bpm - 1);
   } else if (ev.key === "ArrowRight") {
@@ -703,9 +894,20 @@ window.addEventListener("keydown", (ev) => {
     if (prev) link.setLocalPattern(prev);
   } else if (ev.key >= "1" && ev.key <= "6") {
     const idx = Number(ev.key) - 1;
-    link.sendNote(TRACK_NOTES[idx], 127);
-    els.pads[idx]?.classList.add("active", "lit");
-    window.setTimeout(() => els.pads[idx]?.classList.remove("active", "lit"), 120);
+    const note = TRACK_NOTES[idx];
+    link.sendNote(note, 127);
+    recordHit(note, 110);
+    const padIdx = HW_PADS.findIndex((p) => p.note === note);
+    if (padIdx >= 0) {
+      els.pads[padIdx]?.classList.add("active", "lit");
+      window.setTimeout(() => els.pads[padIdx]?.classList.remove("active", "lit"), 120);
+    }
+  } else if (ev.key === "r" || ev.key === "R") {
+    if (editBank < 2 && link.getState().connected) {
+      if (recording) stopRecording(true, true);
+      else startRecording();
+      render();
+    }
   }
 });
 

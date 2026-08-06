@@ -65,6 +65,20 @@ export function toggleStep(tracks: number[][], track: number, step: number, velo
   return next;
 }
 
+/** Overdub: write a hit without clearing other steps/tracks. */
+export function overdubStep(
+  tracks: number[][],
+  track: number,
+  step: number,
+  velocity = 110,
+): number[][] {
+  const next = cloneTracks(tracks);
+  if (track < 0 || track >= TRACKS || step < 0 || step >= STEPS) return next;
+  const v = Math.max(1, Math.min(127, Math.round(velocity)));
+  next[track][step] = v;
+  return next;
+}
+
 export function setStepVelocity(
   tracks: number[][],
   track: number,

@@ -120,7 +120,7 @@ void host_link_send_hello(void)
 {
     host_write(
         "{\"t\":\"hello\",\"v\":2,\"name\":\"EasyInput Beatbox\",\"caps\":[\"drum\",\"pattern\","
-        "\"swing\",\"volume\"]}");
+        "\"swing\",\"volume\",\"record\"]}");
 }
 
 void host_link_send_start(void)
@@ -351,6 +351,13 @@ static void handle_line(const char *line)
     }
     if (strcmp(type, "save") == 0 && s_handlers.on_save) {
         s_handlers.on_save();
+        return;
+    }
+    if (strcmp(type, "record") == 0 && s_handlers.on_record) {
+        long armed = 0;
+        if (extract_int_field(line, "v", &armed)) {
+            s_handlers.on_record(armed != 0);
+        }
         return;
     }
 }
