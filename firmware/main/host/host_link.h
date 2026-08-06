@@ -25,6 +25,8 @@ void host_link_send_beat(bool accent, uint8_t beat_in_bar, uint8_t step);
 void host_link_send_position(uint32_t bar, uint8_t step, uint8_t beat, uint16_t tick,
                              bool accent);
 void host_link_send_note(uint8_t note, uint8_t velocity);
+/** Live key feedback for host UI: index 0..7 = S1..S8, down=1/0. */
+void host_link_send_key(uint8_t index, bool down);
 void host_link_send_status(uint16_t bpm, bool running, uint8_t beat_in_bar, uint8_t step,
                            uint32_t bar, uint16_t tick, bool drum_mode, uint8_t volume);
 void host_link_send_pattern_dump(void);

@@ -1,14 +1,45 @@
-import { createIcons, Pause, Play, PlugZap, Unplug } from "lucide";
+import { createIcons, Eraser, Pause, Play, Trash2, Volume2, VolumeX } from "lucide";
 import "./styles.css";
+import { DRUM_ICONS, type DrumIconId } from "./drum-icons";
 import { BeatboxLink } from "./link";
 import {
   clearPattern,
   clearTrack,
-  copyPattern,
   toggleStep,
   type PatternBanks,
 } from "./pattern";
-import { TRACK_LABELS, TRACK_NOTES } from "./protocol";
+import {
+  NOTE_CHH,
+  NOTE_CLAP,
+  NOTE_KICK,
+  NOTE_OHH,
+  NOTE_RIM,
+  NOTE_SNARE,
+  TRACK_LABELS,
+  TRACK_NOTES,
+} from "./protocol";
+
+/**
+ * Physical 4×2 matrix (S1–S4 top, S5–S8 bottom).
+ * Order follows common finger-drumming / MPC practice:
+ * foundation Kick+Snare on the bottom row; hats & perc above.
+ */
+const HW_PADS: {
+  key: number;
+  label: string;
+  role: "drum" | "abfill" | "play";
+  note: number | null;
+  icon: DrumIconId;
+}[] = [
+  { key: 0, label: "CHH", role: "drum", note: NOTE_CHH, icon: "chh" },
+  { key: 1, label: "OHH", role: "drum", note: NOTE_OHH, icon: "ohh" },
+  { key: 2, label: "CLAP", role: "drum", note: NOTE_CLAP, icon: "clap" },
+  { key: 3, label: "RIM", role: "drum", note: NOTE_RIM, icon: "rim" },
+  { key: 4, label: "KICK", role: "drum", note: NOTE_KICK, icon: "kick" },
+  { key: 5, label: "SNARE", role: "drum", note: NOTE_SNARE, icon: "snare" },
+  { key: 6, label: "A/B FILL", role: "abfill", note: null, icon: "abfill" },
+  { key: 7, label: "PLAY", role: "play", note: null, icon: "play" },
+];
 
 const link = new BeatboxLink();
 const root = document.querySelector<HTMLDivElement>("#app")!;
@@ -20,13 +51,9 @@ root.innerHTML = `
       <h1 class="brand">Beatbox</h1>
     </div>
     <div class="top-actions">
-      <div class="connection-state">
+      <button class="connect-button" id="btnConnect" type="button" aria-label="连接设备">
         <span class="dot" id="connDot"></span>
-        <span id="connLabel">初始化…</span>
-      </div>
-      <button class="connect-button" id="btnConnect" type="button">
-        <i data-lucide="plug-zap"></i>
-        <span>连接设备</span>
+        <span id="connLabel">连接设备</span>
       </button>
     </div>
   </header>
@@ -38,11 +65,18 @@ root.innerHTML = `
           <span class="section-index">01</span>
           <h2>Metronome</h2>
         </div>
-      </div>
-
-      <div class="mode-select seg" role="group" aria-label="播放模式">
-        <button type="button" class="seg-btn active" id="btnModeMetro">仅节拍器</button>
-        <button type="button" class="seg-btn" id="btnModeDrum">鼓机</button>
+        <label class="toggle" title="启用节拍器">
+          <input id="metroEnable" type="checkbox" checked disabled />
+          <span class="toggle-ui" aria-hidden="true">
+            <span class="toggle-rail">
+              <span class="toggle-knob"></span>
+            </span>
+            <span class="toggle-text">
+              <span class="toggle-label">节拍器</span>
+              <span class="toggle-state" id="metroState">开</span>
+            </span>
+          </span>
+        </label>
       </div>
 
       <div class="transport-row">
@@ -54,6 +88,19 @@ root.innerHTML = `
                 aria-label="播放" title="播放">
           <i data-lucide="play"></i>
         </button>
+      </div>
+
+      <div class="beat-section under-bpm">
+        <div class="beat-header">
+          <span>Measure</span>
+          <span id="beatLabel">— / 4</span>
+        </div>
+        <div class="beat-slices" id="beats" aria-label="四拍节拍指示器">
+          <span class="beat-slice accent" data-beat="0"></span>
+          <span class="beat-slice" data-beat="1"></span>
+          <span class="beat-slice" data-beat="2"></span>
+          <span class="beat-slice" data-beat="3"></span>
+        </div>
       </div>
 
       <div class="tempo-control">
@@ -80,7 +127,6 @@ root.innerHTML = `
                  aria-label="节奏摇摆：提高后反拍更靠后" disabled />
           <span>强摆</span>
         </div>
-        <p class="field-hint">把反拍（第 2、4、6… 个十六分）往后推一点，groove 更“甩”。</p>
       </div>
 
       <div class="tempo-control">
@@ -88,24 +134,11 @@ root.innerHTML = `
           <span>总音量</span>
           <span id="volumeValue">100</span>
         </div>
-        <div class="slider-row">
-          <span>静音</span>
+        <div class="slider-row volume-row">
+          <i data-lucide="volume-x" class="slider-icon" aria-hidden="true"></i>
           <input id="volumeSlider" type="range" min="0" max="127" step="1" value="100"
                  aria-label="总音量" disabled />
-          <span>最大</span>
-        </div>
-      </div>
-
-      <div class="beat-section">
-        <div class="beat-header">
-          <span>Measure</span>
-          <span id="beatLabel">— / 4</span>
-        </div>
-        <div class="beat-slices" id="beats" aria-label="四拍节拍指示器">
-          <span class="beat-slice accent" data-beat="0"></span>
-          <span class="beat-slice" data-beat="1"></span>
-          <span class="beat-slice" data-beat="2"></span>
-          <span class="beat-slice" data-beat="3"></span>
+          <i data-lucide="volume-2" class="slider-icon" aria-hidden="true"></i>
         </div>
       </div>
 
@@ -118,30 +151,33 @@ root.innerHTML = `
           <span class="section-index">02</span>
           <h2>Drum Machine</h2>
         </div>
-        <div class="drum-badges">
-          <span class="badge" id="syncBadge">OFFLINE</span>
-        </div>
+        <label class="toggle" title="启用鼓机">
+          <input id="drumEnable" type="checkbox" disabled />
+          <span class="toggle-ui" aria-hidden="true">
+            <span class="toggle-rail">
+              <span class="toggle-knob"></span>
+            </span>
+            <span class="toggle-text">
+              <span class="toggle-label">鼓机</span>
+              <span class="toggle-state" id="drumState">关</span>
+            </span>
+          </span>
+        </label>
       </div>
 
       <div class="drum-toolbar">
         <div class="seg" role="group" aria-label="Pattern bank">
-          <button type="button" class="seg-btn active" data-bank-ui="a" id="btnBankA">A</button>
-          <button type="button" class="seg-btn" data-bank-ui="b" id="btnBankB">B</button>
-          <button type="button" class="seg-btn" data-bank-ui="fill" id="btnBankFill">加花</button>
+          <button type="button" class="seg-btn active" id="btnBankA"
+                  title="切换到 Pattern A">A</button>
+          <button type="button" class="seg-btn" id="btnBankB"
+                  title="切换到 Pattern B">B</button>
+          <button type="button" class="seg-btn" id="btnBankFill"
+                  title="编辑加花谱；按住试听">加花</button>
         </div>
-        <div class="toolbar-actions">
-          <button type="button" class="ghost-btn" id="btnFill" disabled>按住加花</button>
-          <button type="button" class="ghost-btn" id="btnSave" disabled>保存</button>
-        </div>
+        <p class="pattern-status" id="patternStatus">PATTERN A</p>
       </div>
 
-      <label class="check-row drum-click-row" id="clickRow">
-        <input id="clickEnable" type="checkbox" checked disabled />
-        <span id="clickLabel">在鼓点上叠加节拍器声</span>
-      </label>
-
-      <p class="field-hint pads-hint">鼓垫：点击试听；下方格子编排节奏，改完会自动发到板子。</p>
-      <div class="pads-row" id="pads"></div>
+      <div class="pads-matrix" id="pads" aria-label="4×2 实体键位"></div>
 
       <div class="seq-wrap">
         <div class="seq-head">
@@ -152,24 +188,35 @@ root.innerHTML = `
       </div>
 
       <div class="seq-footer">
-        <button type="button" class="ghost-btn" id="btnClearTrack" disabled>清空当前轨</button>
-        <button type="button" class="ghost-btn" id="btnClearPattern" disabled>清空 Pattern</button>
-        <button type="button" class="ghost-btn" id="btnCopyAB" disabled>A → B</button>
-        <span class="mapping-note-inline">GM 36 / 38 / 42 / 46 / 39 / 37 · S6 Fill · S7 A/B</span>
+        <button type="button" class="ghost-btn" id="btnClearTrack" disabled
+                title="清空当前选中轨道">
+          <i data-lucide="eraser"></i>
+          <span>清空本轨</span>
+        </button>
+        <button type="button" class="ghost-btn" id="btnClearPattern" disabled
+                title="清空当前 Pattern 全部轨道">
+          <i data-lucide="trash-2"></i>
+          <span>清空全部</span>
+        </button>
       </div>
     </section>
   </main>
 `;
 
-createIcons({ icons: { Pause, Play, PlugZap, Unplug } });
+createIcons({ icons: { Eraser, Pause, Play, Trash2, Volume2, VolumeX } });
 
 const padsEl = root.querySelector<HTMLDivElement>("#pads")!;
-for (let i = 0; i < TRACK_LABELS.length; i++) {
+for (const pad of HW_PADS) {
   const btn = document.createElement("button");
   btn.type = "button";
-  btn.className = "pad";
-  btn.dataset.pad = String(i);
-  btn.innerHTML = `<span>0${i + 1}</span>${TRACK_LABELS[i]}`;
+  btn.className = "pad" + (pad.role !== "drum" ? " pad-control" : "");
+  btn.dataset.pad = String(pad.key);
+  btn.dataset.role = pad.role;
+  btn.innerHTML = `
+    <span class="pad-key">S${pad.key + 1}</span>
+    <span class="pad-icon">${DRUM_ICONS[pad.icon]}</span>
+    <strong class="pad-name">${pad.label}</strong>
+  `;
   btn.disabled = true;
   padsEl.appendChild(btn);
 }
@@ -227,21 +274,17 @@ const els = {
   beats: [...root.querySelectorAll<HTMLElement>(".beat-slice")],
   btnTransport: root.querySelector<HTMLButtonElement>("#btnTransport")!,
   btnConnect: root.querySelector<HTMLButtonElement>("#btnConnect")!,
-  btnModeMetro: root.querySelector<HTMLButtonElement>("#btnModeMetro")!,
-  btnModeDrum: root.querySelector<HTMLButtonElement>("#btnModeDrum")!,
-  clickRow: root.querySelector<HTMLLabelElement>("#clickRow")!,
-  clickEnable: root.querySelector<HTMLInputElement>("#clickEnable")!,
-  clickLabel: root.querySelector<HTMLElement>("#clickLabel")!,
+  metroEnable: root.querySelector<HTMLInputElement>("#metroEnable")!,
+  metroState: root.querySelector<HTMLElement>("#metroState")!,
+  drumEnable: root.querySelector<HTMLInputElement>("#drumEnable")!,
+  drumState: root.querySelector<HTMLElement>("#drumState")!,
   err: root.querySelector<HTMLElement>("#err")!,
-  syncBadge: root.querySelector<HTMLElement>("#syncBadge")!,
   btnBankA: root.querySelector<HTMLButtonElement>("#btnBankA")!,
   btnBankB: root.querySelector<HTMLButtonElement>("#btnBankB")!,
   btnBankFill: root.querySelector<HTMLButtonElement>("#btnBankFill")!,
-  btnFill: root.querySelector<HTMLButtonElement>("#btnFill")!,
-  btnSave: root.querySelector<HTMLButtonElement>("#btnSave")!,
+  patternStatus: root.querySelector<HTMLElement>("#patternStatus")!,
   btnClearTrack: root.querySelector<HTMLButtonElement>("#btnClearTrack")!,
   btnClearPattern: root.querySelector<HTMLButtonElement>("#btnClearPattern")!,
-  btnCopyAB: root.querySelector<HTMLButtonElement>("#btnCopyAB")!,
   pads: [...root.querySelectorAll<HTMLButtonElement>(".pad")],
   stepHeads: [...root.querySelectorAll<HTMLElement>(".step-head")],
   trackLabels: [...root.querySelectorAll<HTMLButtonElement>(".track-select")],
@@ -288,15 +331,10 @@ function updateTransportIcon(running: boolean) {
   createIcons({ icons: { Pause, Play } });
 }
 
-function updateConnectionButton(connected: boolean) {
-  const iconName = connected ? "unplug" : "plug-zap";
-  const label = connected ? "断开设备" : "连接设备";
-  if (els.btnConnect.dataset.icon === iconName) return;
-  els.btnConnect.dataset.icon = iconName;
-  els.btnConnect.innerHTML = `<i data-lucide="${iconName}"></i><span>${label}</span>`;
-  els.btnConnect.ariaLabel = label;
-  els.btnConnect.title = label;
-  createIcons({ icons: { PlugZap, Unplug } });
+function patternStatusText(edit: 0 | 1 | 2): string {
+  if (edit === 1) return "PATTERN B";
+  if (edit === 2) return "FILL · HOLD TO AUDITION";
+  return "PATTERN A";
 }
 
 function renderPatternGrid() {
@@ -307,9 +345,10 @@ function renderPatternGrid() {
     for (let step = 0; step < 16; step++) {
       const cell = stepButtons[t][step];
       const vel = tracks[t][step];
+      /* Binary UI: on/off only. Velocity still drives audio, not cell opacity. */
       cell.classList.toggle("on", vel > 0);
       cell.classList.toggle("playhead", s.running && s.step === step);
-      cell.style.setProperty("--vel", String(Math.max(0.35, vel / 127)));
+      cell.style.removeProperty("--vel");
       cell.disabled = !s.connected;
     }
   }
@@ -322,15 +361,18 @@ function render() {
   const s = link.getState();
   els.connDot.classList.toggle("on", s.connected && s.sync !== "stale");
   els.connDot.classList.toggle("stale", s.sync === "stale");
-  const syncText =
-    s.sync === "synced"
-      ? s.deviceName
-      : s.sync === "connecting"
-        ? "同步中…"
-        : s.sync === "stale"
-          ? `${s.deviceName}（延迟）`
-          : s.deviceName;
+  els.btnConnect.classList.toggle("connected", s.connected);
+  els.btnConnect.classList.toggle("stale", s.sync === "stale");
+  const syncText = !s.connected
+    ? "连接设备"
+    : s.sync === "connecting"
+      ? "同步中…"
+      : s.sync === "stale"
+        ? `${s.deviceName} · 延迟`
+        : `${s.deviceName} · 断开`;
   els.connLabel.textContent = syncText;
+  els.btnConnect.ariaLabel = s.connected ? "断开设备" : "连接设备";
+  els.btnConnect.title = s.connected ? "点击断开" : "点击连接";
 
   els.bpm.textContent = String(s.bpm);
   els.tempoValue.textContent = `${s.bpm} BPM`;
@@ -353,37 +395,42 @@ function render() {
   }
 
   updateTransportIcon(s.running);
-  updateConnectionButton(s.connected);
   const ready = s.connected && s.sync !== "disconnected";
   els.btnTransport.disabled = !ready;
   els.tempoSlider.disabled = !ready;
-  els.swingSlider.disabled = !ready || !s.drumMode;
+  els.swingSlider.disabled = !ready;
   els.volumeSlider.disabled = !ready;
-  els.clickRow.hidden = !s.drumMode;
-  els.clickEnable.disabled = !ready || !s.drumMode;
-  if (document.activeElement !== els.clickEnable) {
-    els.clickEnable.checked = s.click;
+  els.metroEnable.disabled = !ready;
+  els.drumEnable.disabled = !ready;
+  if (document.activeElement !== els.metroEnable) {
+    els.metroEnable.checked = s.click;
   }
-  els.btnFill.disabled = !ready;
-  els.btnSave.disabled = !ready;
+  if (document.activeElement !== els.drumEnable) {
+    els.drumEnable.checked = s.drumMode;
+  }
+  els.metroState.textContent = s.click ? "开" : "关";
+  els.drumState.textContent = s.drumMode ? "开" : "关";
   els.btnClearTrack.disabled = !ready;
   els.btnClearPattern.disabled = !ready;
-  els.btnCopyAB.disabled = !ready;
-  for (const pad of els.pads) pad.disabled = !ready;
-
-  els.btnModeMetro.disabled = !ready;
-  els.btnModeDrum.disabled = !ready;
-  els.btnModeMetro.classList.toggle("active", !s.drumMode);
-  els.btnModeDrum.classList.toggle("active", s.drumMode);
-
-  els.syncBadge.textContent =
-    s.sync === "synced" ? (s.patternDirty ? "同步中" : "已连接") : s.sync === "connecting" ? "同步中" : s.sync === "stale" ? "延迟" : "未连接";
-  els.syncBadge.classList.toggle("warn", s.patternDirty || s.sync === "stale");
+  els.btnBankA.disabled = !ready;
+  els.btnBankB.disabled = !ready;
+  els.btnBankFill.disabled = !ready;
+  const now = Date.now();
+  for (const pad of els.pads) {
+    const idx = Number(pad.dataset.pad);
+    pad.disabled = !ready;
+    const lit = !!s.keysDown[idx] || now < (s.keyFlashUntil[idx] ?? 0);
+    pad.classList.toggle("lit", lit);
+    pad.classList.toggle("held", !!s.keysDown[idx]);
+  }
+  root.querySelector(".panel.drum")?.classList.toggle("layer-off", ready && !s.drumMode);
+  root.querySelector(".panel.metro")?.classList.toggle("layer-off", ready && !s.click);
 
   els.btnBankA.classList.toggle("active", editBank === 0);
   els.btnBankB.classList.toggle("active", editBank === 1);
   els.btnBankFill.classList.toggle("active", editBank === 2);
-  els.btnFill.classList.toggle("active", s.fill);
+  els.btnBankFill.classList.toggle("audition", s.fill);
+  els.patternStatus.textContent = patternStatusText(editBank);
 
   if (s.step !== lastStep) {
     lastStep = s.step;
@@ -419,6 +466,7 @@ function mutatePattern(mutator: (pattern: PatternBanks) => PatternBanks) {
   link.setLocalPattern(mutator(s.pattern), editBank);
 }
 
+let keyFlashTimer = 0;
 link.subscribe((s) => {
   if (s.running && s.beatInBar !== lastBeatIndex) {
     lastBeatIndex = s.beatInBar;
@@ -429,6 +477,11 @@ link.subscribe((s) => {
   }
   if (!s.running) lastBeatIndex = -1;
   render();
+  const soonest = Math.min(...s.keyFlashUntil.filter((t) => t > Date.now()), Number.POSITIVE_INFINITY);
+  if (Number.isFinite(soonest)) {
+    if (keyFlashTimer) window.clearTimeout(keyFlashTimer);
+    keyFlashTimer = window.setTimeout(() => render(), Math.max(16, soonest - Date.now() + 4));
+  }
 });
 
 els.btnTransport.addEventListener("click", () => {
@@ -438,8 +491,12 @@ els.btnTransport.addEventListener("click", () => {
   else link.sendContinue();
 });
 
-els.btnModeMetro.addEventListener("click", () => link.sendMode(false));
-els.btnModeDrum.addEventListener("click", () => link.sendMode(true));
+els.metroEnable.addEventListener("change", () => {
+  link.sendClick(els.metroEnable.checked);
+});
+els.drumEnable.addEventListener("change", () => {
+  link.sendMode(els.drumEnable.checked);
+});
 
 els.tempoSlider.addEventListener("pointerdown", () => {
   sliderDragging = true;
@@ -494,14 +551,6 @@ const finishVolume = () => {
 els.volumeSlider.addEventListener("change", finishVolume);
 els.volumeSlider.addEventListener("pointerup", finishVolume);
 
-els.clickEnable.addEventListener("change", () => {
-  link.sendClick(els.clickEnable.checked);
-});
-els.clickEnable.addEventListener("click", (ev) => {
-  /* Ensure the toggle always sends, even if render races the checked state. */
-  ev.stopPropagation();
-});
-
 els.btnConnect.addEventListener("click", () => {
   const action = link.getState().connected ? link.disconnect() : link.requestPort();
   action
@@ -517,27 +566,48 @@ els.btnConnect.addEventListener("click", () => {
 
 els.btnBankA.addEventListener("click", () => {
   editBank = 0;
-  if (link.getState().connected) link.sendVariation(0);
+  if (link.getState().connected) {
+    link.sendFill(false);
+    link.sendVariation(0);
+  }
   render();
 });
 els.btnBankB.addEventListener("click", () => {
   editBank = 1;
-  if (link.getState().connected) link.sendVariation(1);
+  if (link.getState().connected) {
+    link.sendFill(false);
+    link.sendVariation(1);
+  }
   render();
 });
-els.btnBankFill.addEventListener("click", () => {
+
+let fillPreviewTimer = 0;
+let fillPreviewHeld = false;
+els.btnBankFill.addEventListener("pointerdown", (ev) => {
+  ev.preventDefault();
   editBank = 2;
   render();
+  if (!link.getState().connected) return;
+  fillPreviewHeld = false;
+  if (fillPreviewTimer) window.clearTimeout(fillPreviewTimer);
+  fillPreviewTimer = window.setTimeout(() => {
+    fillPreviewHeld = true;
+    link.sendFill(true);
+  }, 280);
 });
-
-els.btnFill.addEventListener("pointerdown", (ev) => {
-  ev.preventDefault();
-  link.sendFill(true);
-});
-els.btnFill.addEventListener("pointerup", () => link.sendFill(false));
-els.btnFill.addEventListener("pointerleave", () => link.sendFill(false));
-
-els.btnSave.addEventListener("click", () => link.sendSave());
+const endFillPreview = () => {
+  if (fillPreviewTimer) {
+    window.clearTimeout(fillPreviewTimer);
+    fillPreviewTimer = 0;
+  }
+  if (fillPreviewHeld) {
+    link.sendFill(false);
+    fillPreviewHeld = false;
+  }
+};
+els.btnBankFill.addEventListener("pointerup", endFillPreview);
+els.btnBankFill.addEventListener("pointerleave", endFillPreview);
+els.btnBankFill.addEventListener("pointercancel", endFillPreview);
 
 els.btnClearTrack.addEventListener("click", () => {
   mutatePattern((p) => withCurrentTracks(p, clearTrack(currentTracks(p), selectedTrack)));
@@ -545,21 +615,58 @@ els.btnClearTrack.addEventListener("click", () => {
 els.btnClearPattern.addEventListener("click", () => {
   mutatePattern((p) => withCurrentTracks(p, clearPattern(currentTracks(p))));
 });
-els.btnCopyAB.addEventListener("click", () => {
-  mutatePattern((p) => ({ ...p, b: copyPattern(p.a) }));
-  editBank = 1;
-});
 
+let s7HoldTimer = 0;
+let s7FillArmed = false;
 for (const pad of els.pads) {
   pad.addEventListener("pointerdown", (ev) => {
     ev.preventDefault();
     const idx = Number(pad.dataset.pad);
-    if (!link.getState().connected) return;
-    pad.classList.add("active");
-    link.sendNote(TRACK_NOTES[idx], 127);
+    const meta = HW_PADS[idx];
+    if (!link.getState().connected || !meta) return;
+    pad.classList.add("active", "lit");
+    if (meta.role === "drum" && meta.note != null) {
+      link.sendNote(meta.note, 127);
+    } else if (meta.role === "abfill") {
+      s7FillArmed = false;
+      if (s7HoldTimer) window.clearTimeout(s7HoldTimer);
+      s7HoldTimer = window.setTimeout(() => {
+        s7FillArmed = true;
+        link.sendFill(true);
+      }, 280);
+    } else if (meta.role === "play") {
+      const s = link.getState();
+      if (s.running) link.sendStop();
+      else if (s.bar === 0 && s.step === 0 && s.tick === 0) link.sendStart();
+      else link.sendContinue();
+    }
   });
-  pad.addEventListener("pointerup", () => pad.classList.remove("active"));
-  pad.addEventListener("pointerleave", () => pad.classList.remove("active"));
+  const endS7 = (commitTap: boolean) => {
+    if (s7HoldTimer) {
+      window.clearTimeout(s7HoldTimer);
+      s7HoldTimer = 0;
+    }
+    if (s7FillArmed) {
+      link.sendFill(false);
+      s7FillArmed = false;
+    } else if (commitTap) {
+      const next = link.getState().variation ? 0 : 1;
+      link.sendVariation(next);
+      editBank = next === 0 ? 0 : 1;
+    }
+  };
+  pad.addEventListener("pointerup", () => {
+    const idx = Number(pad.dataset.pad);
+    const meta = HW_PADS[idx];
+    pad.classList.remove("active");
+    if (meta?.role === "abfill") endS7(true);
+  });
+  pad.addEventListener("pointerleave", () => {
+    const idx = Number(pad.dataset.pad);
+    const meta = HW_PADS[idx];
+    pad.classList.remove("active");
+    if (meta?.role === "abfill") endS7(false);
+  });
 }
 
 for (const label of els.trackLabels) {
@@ -597,8 +704,8 @@ window.addEventListener("keydown", (ev) => {
   } else if (ev.key >= "1" && ev.key <= "6") {
     const idx = Number(ev.key) - 1;
     link.sendNote(TRACK_NOTES[idx], 127);
-    els.pads[idx]?.classList.add("active");
-    window.setTimeout(() => els.pads[idx]?.classList.remove("active"), 80);
+    els.pads[idx]?.classList.add("active", "lit");
+    window.setTimeout(() => els.pads[idx]?.classList.remove("active", "lit"), 120);
   }
 });
 

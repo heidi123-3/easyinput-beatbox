@@ -11,9 +11,9 @@
 ## 当前能力
 
 - clave / 木块风格短瞬态 click + public-domain TR-707 PCM 鼓组
-- 显式「仅节拍器 / 鼓机」双模式，上电默认仅节拍器
+- 节拍器 / 鼓机双层独立开关，可同时启用；上电默认节拍器开、鼓机关
 - 内部 **96 PPQN** 采样时钟调度；对外 MIDI Clock 语义为 24 PPQN
-- 旋钮 BPM，编码器 / S8 Play-Stop；S1–S5 Live Pad；S6 Fill；S7 A/B
+- 旋钮 BPM；4×2 Live Pad（上 CHH/OHH/Clap/Rim，下 Kick/Snare）；S7 短按 A/B、长按 Fill；编码器 / S8 Play-Stop
 - 16 步 × 6 轨 Pattern（A/B/Fill）、Swing 50–75%、总音量、revision 同步
 - USB Serial 主机协议 v2：状态 / 位置 / Pattern / 启停 / BPM
 - 电脑端自动重连、节拍器面板 + 16 步编辑器；MIDI 适配层可单测
@@ -63,9 +63,9 @@ pnpm test
 | --- | --- |
 | 旋转编码器 | BPM 60–240 |
 | 短按编码器或 S8 | Play / Stop（Start 归零） |
-| S1–S5 | Kick / Snare / CHH / OHH / Clap |
-| S6 | Fill（按住） |
-| S7 | A/B Variation |
+| S1–S4 | CHH / OHH / Clap / Rim（上排） |
+| S5–S6 | Kick / Snare（下排根基） |
+| S7 | 短按 A/B；长按 Fill |
 | RGB | 5 灯 ping-pong 走拍；重拍偏暖色 |
 
 ## 为什么是「MIDI 语义 + Serial 承载」

@@ -56,6 +56,7 @@ export type HostInbound =
   | { t: "beat"; accent: number; beat: number; step?: number }
   | { t: "position"; bar: number; step: number; beat: number; tick: number; accent?: number }
   | { t: "note"; n: number; v: number }
+  | { t: "key"; i: number; v: number }
   | { t: "pattern"; bank: number; rev: number; p: string }
   | { t: "pattern_dump"; rev: number; a: string; b: string; f: string }
   | { t: "start" }

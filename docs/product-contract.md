@@ -40,15 +40,16 @@
 
 | 丝印 | 功能 |
 | --- | --- |
-| S1 | Kick（GM 36） |
-| S2 | Snare（GM 38） |
-| S3 | Closed HH（GM 42） |
-| S4 | Open HH（GM 46） |
-| S5 | Clap（GM 39） |
-| — | Rimshot（GM 37，UI / Pattern 第 6 轨） |
-| S6 | Fill（按住临时覆盖） |
-| S7 | Variation A/B |
+| S1 | Closed HH（GM 42） |
+| S2 | Open HH（GM 46） |
+| S3 | Clap（GM 39） |
+| S4 | Rimshot（GM 37） |
+| S5 | Kick（GM 36） |
+| S6 | Snare（GM 38） |
+| S7 | 短按 A/B；长按 Fill |
 | S8 / 编码器按压 | Play / Stop |
+
+4×2 排布遵循常见 finger-drumming / MPC 习惯：底排放 Kick·Snare 根基，上排放镲片与打击乐。
 
 - 默认 4/4、16 步、6 轨（Kick / Snare / CHH / OHH / Clap / Rim）
 - Swing 50–75%（主机滑块；编码器按住旋转后续可接）

@@ -10,9 +10,25 @@ import {
   clampVolume,
   decodePatternHex,
   parseHostLine,
+  NOTE_CHH,
+  NOTE_CLAP,
+  NOTE_KICK,
+  NOTE_OHH,
+  NOTE_RIM,
+  NOTE_SNARE,
   type HostInbound,
   type SyncStatus,
 } from "./protocol";
+
+/** Physical pad index (S1=0 … S6=5) for each drum note. */
+const NOTE_TO_PAD: Record<number, number> = {
+  [NOTE_CHH]: 0,
+  [NOTE_OHH]: 1,
+  [NOTE_CLAP]: 2,
+  [NOTE_RIM]: 3,
+  [NOTE_KICK]: 4,
+  [NOTE_SNARE]: 5,
+};
 
 export type DeviceState = {
   sync: SyncStatus;
@@ -42,6 +58,10 @@ export type DeviceState = {
   lastError: string | null;
   updatedAt: number;
   lastPadNote: number | null;
+  /** S1–S8 held state from device key events. */
+  keysDown: boolean[];
+  /** Momentary UI flash deadlines (ms) for each physical key. */
+  keyFlashUntil: number[];
 };
 
 export function createInitialState(): DeviceState {
@@ -73,6 +93,8 @@ export function createInitialState(): DeviceState {
     lastError: null,
     updatedAt: Date.now(),
     lastPadNote: null,
+    keysDown: Array(8).fill(false),
+    keyFlashUntil: Array(8).fill(0),
   };
 }
 
@@ -205,8 +227,25 @@ export function reduceHostMessage(state: DeviceState, msg: HostInbound): DeviceS
         lastError: msg.msg ?? msg.cmd ?? "error",
         updatedAt: now,
       };
-    case "note":
-      return { ...state, lastPadNote: msg.n, updatedAt: now };
+    case "note": {
+      const pad = NOTE_TO_PAD[msg.n];
+      const keyFlashUntil = [...state.keyFlashUntil];
+      if (pad != null) {
+        keyFlashUntil[pad] = now + 160;
+      }
+      return { ...state, lastPadNote: msg.n, keyFlashUntil, updatedAt: now };
+    }
+    case "key": {
+      const idx = msg.i & 0x07;
+      const keysDown = [...state.keysDown];
+      const keyFlashUntil = [...state.keyFlashUntil];
+      const down = !!msg.v;
+      keysDown[idx] = down;
+      if (down) {
+        keyFlashUntil[idx] = now + 180;
+      }
+      return { ...state, keysDown, keyFlashUntil, updatedAt: now };
+    }
     default:
       return state;
   }

@@ -36,12 +36,12 @@
 
 | Note | 用途 | 板端按键 |
 | --- | --- | --- |
-| 36 | Kick | S1 |
-| 38 | Snare | S2 |
-| 42 | Closed HH | S3 |
-| 46 | Open HH | S4 |
-| 39 | Clap | S5 |
-| 37 | Rimshot | UI / Pattern 第 6 轨 |
+| 42 | Closed HH | S1 |
+| 46 | Open HH | S2 |
+| 39 | Clap | S3 |
+| 37 | Rimshot | S4 |
+| 36 | Kick | S5 |
+| 38 | Snare | S6 |
 | 76 | 重拍 click（High Wood Block） | 节拍器 accent |
 | 77 | 普通拍 click（Low Wood Block） | 节拍器 normal |
 
@@ -49,8 +49,7 @@
 
 | 按键 | 功能 |
 | --- | --- |
-| S6 | Fill（按住） |
-| S7 | Variation A/B |
+| S7 | 短按 A/B；长按 Fill |
 | S8 / 编码器按压 | Play / Stop |
 
 ## Host → Device（标准 MIDI 映射）

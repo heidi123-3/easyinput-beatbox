@@ -203,11 +203,16 @@ void pattern_load_default(void)
         s_banks[BEATBOX_BANK_B].vel[2][s] = (s % 4 == 0) ? 52 : 38;
     }
 
-    /* Fill: denser snare + rim accents. */
+    /*
+     * Fill: eight consecutive 8th-note snares (countable roll).
+     * A 16th-note snare roll blurs to ~4 hits here: the snare one-shot is
+     * ~140 ms, almost one 16th at 120 BPM, so adjacent 16ths smear together.
+     */
     s_banks[BEATBOX_BANK_FILL].vel[0][0] = 120;
     s_banks[BEATBOX_BANK_FILL].vel[0][8] = 110;
-    for (int s = 8; s < BEATBOX_STEPS_PER_BAR; ++s) {
-        s_banks[BEATBOX_BANK_FILL].vel[1][s] = (uint8_t)(90 + (s & 3) * 8);
+    for (int i = 0; i < 8; ++i) {
+        const int s = i * 2;
+        s_banks[BEATBOX_BANK_FILL].vel[1][s] = (uint8_t)(100 + i * 3);
     }
     for (int s = 0; s < BEATBOX_STEPS_PER_BAR; s += 2) {
         s_banks[BEATBOX_BANK_FILL].vel[2][s] = 40;

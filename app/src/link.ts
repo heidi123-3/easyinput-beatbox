@@ -248,10 +248,7 @@ export class BeatboxLink {
   sendNote(note: number, velocity = 127) {
     const n = note & 0x7f;
     const v = Math.max(1, velocity & 0x7f);
-    if (!this.state.drumMode) {
-      this.sendMode(true);
-    }
-    this.patch((s) => ({ ...s, lastPadNote: n, drumMode: true, updatedAt: Date.now() }));
+    this.patch((s) => ({ ...s, lastPadNote: n, updatedAt: Date.now() }));
     void this.writeLine(`{"t":"note","n":${n},"v":${v}}`);
   }
 
@@ -261,12 +258,7 @@ export class BeatboxLink {
   }
 
   sendMode(drumMode: boolean) {
-    this.patch((s) => ({
-      ...s,
-      drumMode,
-      click: drumMode ? s.click : true,
-      updatedAt: Date.now(),
-    }));
+    this.patch((s) => ({ ...s, drumMode, updatedAt: Date.now() }));
     void this.writeLine(`{"t":"mode","v":${drumMode ? 1 : 0}}`);
   }
 

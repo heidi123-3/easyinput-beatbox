@@ -424,6 +424,7 @@ static void audio_task(void *argument)
                 const bool on_quarter = (tick_in_bar % BEATBOX_TICKS_PER_QUARTER) == 0;
                 const bool accent = on_quarter && beat_in_bar == 0;
 
+                /* Independent layers: drum sequencer and metronome click can both run. */
                 if (control.drum_mode) {
                     s_seq_note_count = 0;
                     sequencer_on_tick(tick_in_bar);
@@ -433,9 +434,7 @@ static void audio_task(void *argument)
                     }
                 }
 
-                /* Metronome-only mode always clicks; drum mode uses the overlay flag. */
-                const bool want_click = control.drum_mode ? control.metronome : true;
-                if (on_quarter && want_click) {
+                if (on_quarter && control.metronome) {
                     start_voice(voices, accent ? VOICE_CLICK_ACCENT : VOICE_CLICK_NORMAL, 90,
                                 voice_age++);
                 }

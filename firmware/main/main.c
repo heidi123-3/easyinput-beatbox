@@ -163,14 +163,8 @@ static void on_host_click(bool enabled)
 
 static void on_host_mode(bool drum_mode)
 {
+    /* `mode` enables the drum layer; metronome click stays an independent switch. */
     s_drum_mode = drum_mode;
-    if (!drum_mode) {
-        /* Metronome-only always sounds; overlay mute only applies in drum mode. */
-        pattern_set_click(true);
-        if (s_audio_ready) {
-            (void)audio_click_set_metronome(true);
-        }
-    }
     if (s_audio_ready) {
         (void)audio_click_set_mode(drum_mode ? AUDIO_MODE_DRUM : AUDIO_MODE_METRONOME);
     }
@@ -211,29 +205,57 @@ static void on_host_ping(void)
 
 static void handle_pads(const board_input_snapshot_t *in)
 {
-    static const uint8_t pad_notes[5] = {
-        BEATBOX_NOTE_KICK, BEATBOX_NOTE_SNARE, BEATBOX_NOTE_CHH, BEATBOX_NOTE_OHH,
-        BEATBOX_NOTE_CLAP,
+    /*
+     * Hardware 4×2 performance map (finger-drumming / MPC style):
+     *   S1 CHH  S2 OHH  S3 Clap S4 Rim
+     *   S5 Kick S6 Snare S7 A/B|Fill S8 Play
+     * Foundation Kick+Snare sit on the bottom row; hats/perc above.
+     */
+    static const uint8_t pad_notes[6] = {
+        BEATBOX_NOTE_CHH, BEATBOX_NOTE_OHH, BEATBOX_NOTE_CLAP, BEATBOX_NOTE_RIM,
+        BEATBOX_NOTE_KICK, BEATBOX_NOTE_SNARE,
     };
+    static int64_t s7_down_us;
+    static bool s7_armed;
+    static bool s7_fill_from_hold;
+    const int64_t now = esp_timer_get_time();
+    const int64_t fill_hold_us = 280000;
 
-    for (int i = 0; i < 5; ++i) {
+    for (int i = 0; i < 8; ++i) {
+        if (in->s[i] != s_prev_keys[i]) {
+            host_link_send_key((uint8_t)i, in->s[i]);
+        }
+    }
+
+    for (int i = 0; i < 6; ++i) {
         if (in->s[i] && !s_prev_keys[i]) {
-            if (!s_drum_mode) {
-                on_host_mode(true);
-            }
             on_host_note(pad_notes[i], 127);
         }
     }
 
-    /* S6 Fill hold */
-    if (in->s[5] != s_fill_held) {
-        on_host_fill(in->s[5]);
-    }
-
-    /* S7 Variation toggle */
+    /* S7: hold engages Fill; short tap toggles A/B. */
     if (in->s[6] && !s_prev_keys[6]) {
-        pattern_request_variation(pattern_variation() ? 0 : 1);
-        send_status();
+        s7_down_us = now;
+        s7_armed = true;
+        s7_fill_from_hold = false;
+    }
+    if (in->s[6] && s7_armed && !s7_fill_from_hold && (now - s7_down_us) >= fill_hold_us) {
+        s7_fill_from_hold = true;
+        if (!s_fill_held) {
+            on_host_fill(true);
+        }
+    }
+    if (!in->s[6] && s_prev_keys[6]) {
+        if (s7_fill_from_hold) {
+            if (s_fill_held) {
+                on_host_fill(false);
+            }
+        } else if (s7_armed) {
+            pattern_request_variation(pattern_variation() ? 0 : 1);
+            send_status();
+        }
+        s7_armed = false;
+        s7_fill_from_hold = false;
     }
 
     for (int i = 0; i < 8; ++i) {
@@ -285,7 +307,7 @@ void app_main(void)
     host_link_send_hello();
     host_link_send_pattern_dump();
     send_status();
-    ESP_LOGI(TAG, "Ready. Pads=S1-5, Fill=S6, A/B=S7, Play=enc/S8, USB=Serial v2");
+    ESP_LOGI(TAG, "Ready. Pads=S1-6, S7=A/B|Fill-hold, Play=enc/S8, USB=Serial v2");
 
     int64_t last_status_us = 0;
     int64_t last_hello_us = 0;
@@ -297,6 +319,10 @@ void app_main(void)
         apply_encoder_bpm(in.enc_delta);
 
         if (in.enc_press) {
+            /* Encoder click mirrors S8 in the host pad matrix when S8 wasn't the source. */
+            if (!in.s[7]) {
+                host_link_send_key(7, true);
+            }
             if (tempo_is_running()) {
                 transport_set(false, false, false);
             } else {

@@ -166,6 +166,14 @@ void host_link_send_note(uint8_t note, uint8_t velocity)
     host_write(line);
 }
 
+void host_link_send_key(uint8_t index, bool down)
+{
+    char line[72];
+    snprintf(line, sizeof(line), "{\"t\":\"key\",\"i\":%u,\"v\":%d}", (unsigned)(index & 0x07),
+             down ? 1 : 0);
+    host_write(line);
+}
+
 void host_link_send_status(uint16_t bpm, bool running, uint8_t beat_in_bar, uint8_t step,
                            uint32_t bar, uint16_t tick, bool drum_mode, uint8_t volume)
 {

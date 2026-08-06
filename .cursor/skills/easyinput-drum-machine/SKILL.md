@@ -44,15 +44,14 @@ BPM 默认范围：`60–240`，启动默认 `120`。
 
 | 丝印 | 功能 | 备注 |
 | --- | --- | --- |
-| S1 | Kick | 长按清空本轨 |
-| S2 | Snare | 长按切换音色变体 |
-| S3 | Closed HH | 可实时点按录入 |
-| S4 | Open HH | 与闭镲互斥 |
-| S5 | Clap / Perc | 打击乐 |
-| — | Rimshot | UI / Pattern 第 6 轨（GM 37）；板键仍保留 S6=Fill |
-| S6 | Fill | 按住临时加花，松开回主循环 |
-| S7 | Variation | A/B Pattern 切换 |
-| S8 | Play / Stop | 长按保存 Pattern |
+| S1 | Closed HH | 上排；与开镲互斥 choke |
+| S2 | Open HH | 上排 |
+| S3 | Clap | 上排 |
+| S4 | Rimshot | 上排（GM 37） |
+| S5 | Kick | 下排根基（finger-drumming / MPC 习惯） |
+| S6 | Snare | 下排根基 |
+| S7 | A/B 或 Fill | 短按切换 A/B；长按进入 Fill，松开退出 |
+| S8 | Play / Stop | 与编码器按压相同；长按保存后续可接 |
 
 正常演奏只用短按、旋转、按住；长按只承担保存/清空/设置。
 
@@ -88,7 +87,7 @@ GPIO8 冷启动/关断顺序必须遵守 `easyinput-board-cy` 的电源合同。
 
 主通道为 **USB Serial + Web Serial**。消息是领域事件，可映射到 MIDI，但 JSON ≠ MIDI 字节。详情见 `docs/host-protocol.md` 与 `docs/midi-protocol.md`。
 
-- 显式模式：`METRONOME` 只调度 click；`DRUM` 调度 Pattern 并可选叠加 click；上电默认 `METRONOME`
+- 双层独立开关：节拍器 click 与鼓机 Pattern 可同时开/关；上电默认 click 开、鼓机关；Live Pad 不依赖鼓机层
 - Start / Continue / Stop + 位置（bar/step/tick）
 - Pattern get/set + revision；Swing；A/B；Fill；总音量 `0..127`
 - GM Ch.10：36/38/42/46/39/37 + click 76/77
