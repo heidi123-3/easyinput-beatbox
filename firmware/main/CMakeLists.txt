@@ -1,0 +1,15 @@
+idf_component_register(
+    SRCS
+        "main.c"
+        "board/board_power.c"
+        "board/board_keys.c"
+        "ui/led_status.c"
+        "audio/audio_click.c"
+        "seq/tempo.c"
+    INCLUDE_DIRS
+        "."
+        "board"
+        "audio"
+        "seq"
+        "ui"
+)
