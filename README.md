@@ -102,4 +102,6 @@ pnpm desktop:start
 
 ## 许可
 
-Apache-2.0。
+本项目代码采用 [MIT License](LICENSE) 开源。
+
+仓库中来自第三方的图标、音频采样及其他素材，继续遵循其所在目录中标注的原始许可条款。

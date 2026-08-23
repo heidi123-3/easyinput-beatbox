@@ -1,6 +1,7 @@
 {
   "name": "easyinput-beatbox",
   "private": true,
+  "license": "MIT",
   "packageManager": "pnpm@10.5.0",
   "scripts": {
     "dev": "pnpm --filter easyinput-beatbox-app dev",
