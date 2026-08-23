@@ -4,6 +4,8 @@
 
 > 板子守着拍子和声音。电脑只负责看见、改谱、同步。
 
+本项目建立在 [CY-CHENYUE/easyinput-board-cy](https://github.com/CY-CHENYUE/easyinput-board-cy) 开发板项目之上。该仓库提供 EasyInput V2.0 的硬件资料、板级安全边界和 AI 开发上下文；本仓库在这套硬件基础上实现 Beatbox 的固件、音频引擎、音序器、网页应用与课程资料。
+
 ![EasyInput Beatbox 网页控制界面](docs/course/figures/png/07-beatbox-web-app.png)
 
 ## 项目是什么
@@ -65,7 +67,7 @@ EasyInput Beatbox 不是一个把按键事件发送给电脑后才发声的控�
 
 ### 需要准备
 
-- EasyInput V2.0 开发板；
+- [EasyInput V2.0 开发板](https://github.com/CY-CHENYUE/easyinput-board-cy)；
 - 支持数据传输的 USB-C 线；
 - ESP-IDF 5.4.1，目标芯片为 `esp32s3`；
 - Node.js 与 pnpm；
@@ -182,13 +184,13 @@ pnpm test
 
 ## AI / Agent 协作
 
-项目把两类知识分开维护：板级资料描述引脚、电源、信号方向等不可随意改变的事实；Beatbox 产品约定描述键位、节拍、Pattern 与协议等产品行为。
+项目把两类知识分开维护：上游 [easyinput-board-cy](https://github.com/CY-CHENYUE/easyinput-board-cy) 描述引脚、电源、信号方向和安全边界等不可随意改变的板级事实；本仓库的 Beatbox 产品约定描述键位、节拍、Pattern 与协议等产品行为。
 
 ```bash
 ./scripts/setup_skills.sh
 ```
 
-修改硬件脚位、BOOT、GPIO8 或外设代码前，应先核对开发板资料；修改键位、BPM、Pattern 或协议时，以 Beatbox 产品约定为准。
+修改硬件脚位、BOOT、GPIO8 或外设代码前，应先核对上游开发板资料；修改键位、BPM、Pattern 或协议时，以 Beatbox 产品约定为准。两个仓库分别维护各自的代码与授权条款。
 
 ## 许可
 
