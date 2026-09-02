@@ -24,6 +24,9 @@ static bool s_fill_held;
 static bool s_drum_mode;
 /* Host UI overdub: lock S7 / S8 / encoder press while armed. */
 static bool s_record_armed;
+/* Key-LED: holding S1..S7 lights the strip in a per-key color. */
+static bool s_key_led_held;
+static uint8_t s_key_led_color[3];
 
 static void send_status(void)
 {
@@ -243,6 +246,36 @@ static void handle_pads(const board_input_snapshot_t *in)
         }
     }
 
+    /* Key-LED: S1..S7 each lights the strip in its own color. */
+    static const uint8_t key_colors[7][3] = {
+        {255, 0, 0},     /* S1 red */
+        {255, 128, 0},   /* S2 orange */
+        {255, 255, 0},   /* S3 yellow */
+        {0, 255, 0},     /* S4 green */
+        {0, 0, 255},     /* S5 blue */
+        {75, 0, 130},    /* S6 indigo */
+        {148, 0, 211},   /* S7 purple */
+    };
+    for (int i = 0; i < 7; ++i) {
+        if (in->s[i] && !s_prev_keys[i]) {
+            s_key_led_held = true;
+            s_key_led_color[0] = key_colors[i][0];
+            s_key_led_color[1] = key_colors[i][1];
+            s_key_led_color[2] = key_colors[i][2];
+        } else if (!in->s[i] && s_prev_keys[i]) {
+            bool any_held = false;
+            for (int j = 0; j < 7; ++j) {
+                if (in->s[j]) {
+                    any_held = true;
+                    break;
+                }
+            }
+            if (!any_held) {
+                s_key_led_held = false;
+            }
+        }
+    }
+
     if (s_record_armed) {
         /* Recording: ignore S7 A/B|Fill and clear any pending hold state. */
         if (!in->s[6] && s_prev_keys[6]) {
@@ -371,7 +404,12 @@ void app_main(void)
 
         if (now - last_led_frame_us >= 20000) {
             last_led_frame_us = now;
-            (void)led_status_update(now, tempo_get_bpm(), tempo_is_running());
+            if (s_key_led_held) {
+                (void)led_status_set_solid_rgb(s_key_led_color[0], s_key_led_color[1],
+                                               s_key_led_color[2]);
+            } else {
+                (void)led_status_update(now, tempo_get_bpm(), tempo_is_running());
+            }
         }
 
         if (now - last_status_us > 500000) {
